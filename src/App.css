@@ -1,5 +1,6 @@
 .App {
   text-align: center;
+  font-family: minecraftiaregular, sans-serif;
 }
 
 .App-logo {
@@ -36,3 +37,27 @@
     transform: rotate(360deg);
   }
 }
+
+.preview {
+  font-family: minecraftiaregular, sans-serif;
+  font-size: 1.5rem;
+  padding: 10px;
+  margin: 20px auto;
+  background-color: #ffffff;
+  border: 1px solid #ccc;
+  width: 80%;
+  min-height: 3rem;
+}
+
+/* Disable default text selection highlight in the editor */
+[contenteditable]::selection {
+  background: #f709e328;
+}
+[contenteditable]::-moz-selection {
+  background: #f709e328;
+}
+
+.radix-themes {
+  --default-font-family: 'minecraftiaregular' !important;
+  --heading-font-family: 'minecraftiaregular' !important;
+} 

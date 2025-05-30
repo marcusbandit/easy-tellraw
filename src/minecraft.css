@@ -1,0 +1,32 @@
+@font-face {
+  font-family: "minecraftiaregular";
+  src: url("./fonts/minecraftia/minecraftia-webfont.woff") format("woff");
+  font-style: normal;
+  font-weight: normal;
+}
+
+body {
+  font-family: "minecraftiaregular", sans-serif;
+  text-align: center;
+  background-color: #121212;
+  color: #e0e0e0;
+}
+
+/* Override Radix Themes default font to Minecraft */
+.radix-themes {
+  --default-font-family: 'minecraftiaregular';
+  --heading-font-family: 'minecraftiaregular';
+}
+
+/* Disable font smoothing for headings to preserve pixelated font crispness */
+.radix-themes h1,
+.radix-themes h2,
+.radix-themes h3,
+.radix-themes h4,
+.radix-themes h5,
+.radix-themes h6 {
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeSpeed;
+  font-weight: normal !important;
+} 

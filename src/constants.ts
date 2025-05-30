@@ -1,0 +1,1 @@
+export const TELLRAW_PREFIX = 'tellraw @s '; 
