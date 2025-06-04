@@ -282,7 +282,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <Box style={{ background: "var(--gray-a2)" }} p="4" minHeight="100vh">
+    <Box style={{ background: "var(--gray-a2)", display: "flex", justifyContent: "center", alignItems: "center" }} p="4" minHeight="100vh">
       <Slate key={slateKey}
         editor={editor}
         initialValue={value}
