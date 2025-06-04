@@ -119,13 +119,19 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
                     }
                   }
                 }
-                if (event.key === 'Backspace') {
+                // Handle deletion: delete full selection if present, else character delete
+                if (event.key === 'Backspace' || event.key === 'Delete') {
                   event.preventDefault();
-                  Transforms.delete(editor, { unit: 'character', reverse: true });
-                }
-                if (event.key === 'Delete') {
-                  event.preventDefault();
-                  Transforms.delete(editor, { unit: 'character' });
+                  const sel = editor.selection;
+                  if (sel && !Range.isCollapsed(sel)) {
+                    Transforms.delete(editor, { at: sel });
+                  } else {
+                    if (event.key === 'Backspace') {
+                      Transforms.delete(editor, { unit: 'character', reverse: true });
+                    } else {
+                      Transforms.delete(editor, { unit: 'character' });
+                    }
+                  }
                 }
               }}
               onPaste={event => {
@@ -210,7 +216,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
                 </Flex>
               </Dialog.Content>
             </Dialog.Root>
-            <Button variant="surface" size="2" onClick={onReset}>Reset</Button>
+            <Button variant="outline" color="red" size="2" onClick={onReset}>Reset</Button>
             <Button variant="solid" size="2" onClick={onCopy}>Copy</Button>
           </Flex>
         </Box>

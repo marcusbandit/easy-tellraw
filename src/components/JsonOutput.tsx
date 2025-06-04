@@ -49,6 +49,7 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
   const jsonPart = jsonString.startsWith(prefix) ? jsonString.substring(prefix.length) : jsonString;
   // Determine raw output data: full or inline split segments
   const rawFull = JSON.parse(jsonPart) as any[];
+  // If there's a marked selection, show marked segments inline
   const rawData: any[] = markedSegments != null && beforeSegments != null && afterSegments != null
     ? [...beforeSegments, ...markedSegments, ...afterSegments]
     : rawFull;
@@ -172,7 +173,7 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
           )}
         </Button>
       </div>
-      <pre
+      <pre key={displayValue}
         style={{
           width: '100%', boxSizing: 'border-box', height: 200, overflow: 'auto',
           backgroundColor: '#1e1e1e', border: '1px solid #333',

@@ -114,6 +114,11 @@ const App: React.FC = () => {
       const afterFrag = SlateEditor.fragment(editor, { anchor: Range.end(sel), focus: end } as any);
       setBeforeSegs(squash(flatten(beforeFrag)));
       setAfterSegs(squash(flatten(afterFrag)));
+    } else {
+      // Clear split JSON when selection is collapsed or no marking
+      setBeforeSegs(null);
+      setMarkedSegs(null);
+      setAfterSegs(null);
     }
   };
 
