@@ -147,11 +147,13 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         </TextField.Slot>
       </TextField.Root>
       <Heading size="2" mb="1" mt="2">Hover</Heading>
-      <input
+      <TextField.Root
         value={hoverText}
         onChange={e => setHoverText(e.target.value)}
         placeholder="hover text"
-        style={{ padding: '4px', width: '100%', background: '#333', color: '#e0e0e0', border: '1px solid #555', borderRadius: '4px' }}
+        size="2"
+        variant="surface"
+        style={{ width: '100%', marginTop: '8px' }}
       />
     </Card>
   );
