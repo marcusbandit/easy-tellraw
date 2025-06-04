@@ -153,7 +153,7 @@ export const ColorButton = ({ editor, color: initialColor, path }: { editor: any
 
   return (
     <div
-      style={{ width: '100%' }}
+      style={{ width: '100%', paddingTop: '16px' }}
       onMouseDown={() => {
         setIsDragging(true);
         savedSelection.current = editor.selection;

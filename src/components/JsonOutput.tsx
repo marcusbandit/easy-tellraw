@@ -39,7 +39,7 @@ const HEX_NAME_MAP: Record<string,string> = {
 };
 
 const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSegmentIndex, beforeSegments, markedSegments, afterSegments, target, onTargetChange }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   // Controlled tellraw target selector (@s, @p, @a)
   const selectedTarget = target ?? '@p';
   const handleTargetChange = (value: string) => onTargetChange?.(value);
