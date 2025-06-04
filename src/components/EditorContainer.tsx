@@ -1,9 +1,12 @@
-import React, { useEffect, useCallback } from 'react';
-import { Container, Box, Card, Heading } from '@radix-ui/themes';
+import React, { useEffect, useCallback, useState } from 'react';
+import { Container, Box, Card, Heading, Flex, Button, Dialog, Text } from '@radix-ui/themes';
 import { Editable, useSlate } from 'slate-react';
-import { Transforms, Text, Editor as SlateEditor, Range } from 'slate';
+import { Transforms, Text as SlateText, Editor as SlateEditor, Range } from 'slate';
 import JsonOutput from './JsonOutput';
 import { Leaf } from './TextEditor';
+import Editor from 'react-simple-code-editor';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-json';
 
 interface EditorContainerProps {
   tellrawJson: string;
@@ -13,15 +16,35 @@ interface EditorContainerProps {
   beforeSegments?: any[] | null;
   markedSegments?: any[] | null;
   afterSegments?: any[] | null;
+  onImport: (input: string) => void;
+  onReset: () => void;
+  onCopy: () => void;
+  target: string;
+  setTarget: (value: string) => void;
 }
 
-const EditorContainer: React.FC<EditorContainerProps> = ({ tellrawJson, segments, activeSegmentIndex, selection, beforeSegments, markedSegments, afterSegments }) => {
+const EditorContainer: React.FC<EditorContainerProps> = ({
+  tellrawJson,
+  segments,
+  activeSegmentIndex,
+  selection,
+  beforeSegments,
+  markedSegments,
+  afterSegments,
+  onImport,
+  onReset,
+  onCopy,
+  target,
+  setTarget,
+}) => {
   const editor = useSlate();
+  const [importInput, setImportInput] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
 
   // Decorate text nodes overlapping the selection range
   const decorate = useCallback(([node, path]: any) => {
     const ranges: any[] = [];
-    if (selection && Range.isRange(selection) && Text.isText(node)) {
+    if (selection && Range.isRange(selection) && SlateText.isText(node)) {
       // Entire node range
       const nodeRange = SlateEditor.range(editor, path);
       const intersection = Range.intersection(nodeRange, selection);
@@ -41,8 +64,29 @@ const EditorContainer: React.FC<EditorContainerProps> = ({ tellrawJson, segments
     // @ts-ignore: dynamic mark access
     const marks: any = SlateEditor.marks(editor) || {};
     const isActive = marks[format];
-    Transforms.setNodes(editor, { [format]: !isActive }, { match: (n: any) => Text.isText(n), split: true });
+    Transforms.setNodes(editor, { [format]: !isActive }, { match: (n: any) => SlateText.isText(n), split: true });
   };
+
+  // Validate importInput for JSON syntax
+  useEffect(() => {
+    let jsonPart = importInput.trim();
+    if (/^\/?tellraw/i.test(jsonPart)) {
+      // Strip '/tellraw' and selector
+      const tokens = jsonPart.split(/\s+/);
+      if (tokens.length >= 3) jsonPart = tokens.slice(2).join(' ');
+      else {
+        const idx = jsonPart.indexOf('[');
+        jsonPart = idx >= 0 ? jsonPart.slice(idx) : jsonPart;
+      }
+    }
+    try {
+      const parsed = JSON.parse(jsonPart);
+      if (!Array.isArray(parsed)) throw new Error('Expected JSON array');
+      setImportError(null);
+    } catch (e: any) {
+      setImportError(e.message);
+    }
+  }, [importInput]);
 
   return (
     <Container size="3">
@@ -99,7 +143,76 @@ const EditorContainer: React.FC<EditorContainerProps> = ({ tellrawJson, segments
             beforeSegments={beforeSegments}
             markedSegments={markedSegments}
             afterSegments={afterSegments}
+            target={target}
+            onTargetChange={setTarget}
           />
+          <Flex justify="end" gap="2" mt="4">
+            <Dialog.Root>
+              <Dialog.Trigger>
+                <Button variant="surface" size="2">Import</Button>
+              </Dialog.Trigger>
+              <Dialog.Content width="80vw" maxWidth="none">
+                <Dialog.Title>Import Tellraw Command</Dialog.Title>
+                <Editor
+                  value={importInput}
+                  onValueChange={code => setImportInput(code)}
+                  highlight={code => {
+                    // Highlight the 'tellraw' command and selector in cyan if present
+                    const prefixRegex = /^(\/?tellraw)(\s+)(@[^\s]+)/i;
+                    const match = code.match(prefixRegex);
+                    let remainder = code;
+                    let html = '';
+                    if (match) {
+                      // match[1] = '/tellraw' or 'tellraw', match[2] = spaces, match[3] = selector
+                      const [full, cmd, space, sel] = match;
+                      html += `<span class="token keyword">${cmd}</span>${space}<span class="token selector">${sel}</span>`;
+                      remainder = code.slice(full.length);
+                    }
+                    try {
+                      // Highlight JSON part
+                      let restHtml = Prism.highlight(remainder, Prism.languages.json, 'json');
+                      // Wrap braces/brackets with custom classes
+                      restHtml = restHtml
+                        .replace(/<span class="token punctuation">(\{)<\/span>/g, '<span class="token punctuation punctuation-brace">$1</span>')
+                        .replace(/<span class="token punctuation">(\})<\/span>/g, '<span class="token punctuation punctuation-brace">$1</span>')
+                        .replace(/<span class="token punctuation">(\[)<\/span>/g, '<span class="token punctuation punctuation-bracket">$1</span>')
+                        .replace(/<span class="token punctuation">(\])<\/span>/g, '<span class="token punctuation punctuation-bracket">$1</span>');
+                      return html + restHtml;
+                    } catch {
+                      return code;
+                    }
+                  }}
+                  padding={8}
+                  style={{
+                    fontFamily: 'minecraftiaregular, sans-serif',
+                    backgroundColor: 'var(--gray-a2)',
+                    color: 'white',
+                    border: '1px solid var(--gray-a6)',
+                    borderRadius: '4px',
+                    minHeight: '300px',
+                    overflow: 'auto'
+                  }}
+                />
+                {importError && (
+                  <Text as="p" size="2" style={{ color: 'var(--red9)', marginTop: '4px' }}>
+                    Invalid JSON: {importError}
+                  </Text>
+                )}
+                <Flex justify="end" gap="2" mt="3">
+                  <Dialog.Close>
+                    <Button variant="outline" size="2">Cancel</Button>
+                  </Dialog.Close>
+                  <Dialog.Close>
+                    <Button size="2" onClick={() => onImport(importInput)} disabled={!!importError}>
+                      Load
+                    </Button>
+                  </Dialog.Close>
+                </Flex>
+              </Dialog.Content>
+            </Dialog.Root>
+            <Button variant="surface" size="2" onClick={onReset}>Reset</Button>
+            <Button variant="solid" size="2" onClick={onCopy}>Copy</Button>
+          </Flex>
         </Box>
       </Card>
     </Container>

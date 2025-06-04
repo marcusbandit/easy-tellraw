@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Prevent Automatic Builds
+
+The AI assistant must not execute any build or installation commands without an explicit user request.
+
+Rules:
+- Never propose or run `npm run build`, `npm run dist`, `npm install`, or similar commands on your own.
+- Only invoke build or install scripts when the user directly asks (e.g., “please build” or “run npm run build”).

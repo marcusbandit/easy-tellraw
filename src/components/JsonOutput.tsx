@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ChevronDownIcon, ChevronRightIcon, CopyIcon } from '@radix-ui/react-icons';
-import { IconButton, SegmentedControl } from '@radix-ui/themes';
+import { ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
+import { SegmentedControl, Button } from '@radix-ui/themes';
 import { TELLRAW_PREFIX } from '../constants';
+import { syntaxColors } from '../syntaxColors';
 
 type JsonOutputProps = {
   jsonString: string;
@@ -12,6 +13,9 @@ type JsonOutputProps = {
   beforeSegments?: any[] | null;
   markedSegments?: any[] | null;
   afterSegments?: any[] | null;
+  // Controlled target selector
+  target?: string;
+  onTargetChange?: (value: string) => void;
 };
 
 // Map of hex codes to Minecraft color names
@@ -34,13 +38,14 @@ const HEX_NAME_MAP: Record<string,string> = {
   '#ffffff': 'white',
 };
 
-const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSegmentIndex, beforeSegments, markedSegments, afterSegments }) => {
+const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSegmentIndex, beforeSegments, markedSegments, afterSegments, target, onTargetChange }) => {
   const [collapsed, setCollapsed] = useState(false);
-  // tellraw target selector (@s, @p, @a)
-  const [target, setTarget] = useState<string>('@s');
+  // Controlled tellraw target selector (@s, @p, @a)
+  const selectedTarget = target ?? '@p';
+  const handleTargetChange = (value: string) => onTargetChange?.(value);
   const prefix = TELLRAW_PREFIX;
   // Override prefix with selected target
-  const dynamicPrefix = `tellraw ${target} `;
+  const dynamicPrefix = `tellraw ${selectedTarget} `;
   const jsonPart = jsonString.startsWith(prefix) ? jsonString.substring(prefix.length) : jsonString;
   // Determine raw output data: full or inline split segments
   const rawFull = JSON.parse(jsonPart) as any[];
@@ -64,16 +69,13 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
   const displayValue = collapsed ? collapsedJson : prettyWithTarget;
 
   const handleToggle = () => setCollapsed(c => !c);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(collapsedJson);
-  };
 
   // Build syntax-highlighted tokens for JSON output, with full-segment highlighting
   const highlighted = (() => {
     const display = displayValue;
     // Remove the dynamic prefix from the section for tokenization
     const section = display.startsWith(dynamicPrefix) ? display.slice(dynamicPrefix.length) : display;
-    const pattern = /"(?:\\.|[^"\\])*"|\{|\}|\[|\]|:|,|\s+|./g;
+    const pattern = /"(?:\\.|[^"\\])*"|true|false|null|-?\d+(?:\.\d+)?|\{|\}|\[|\]|:|,|\s+|./g;
     const tokens = Array.from(section.matchAll(pattern)).map(m => m[0]);
     // Compute highlight ranges for all segments
     const highlightRanges: Array<{ start: number; end: number }> = [];
@@ -121,19 +123,26 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
     }
     let charIndex = 0;
     return [
-      <span key="prefix" style={{ color: '#759FB8' }}>{dynamicPrefix}</span>,
+      // Highlight 'tellraw ' in keyword color
+      <span key="prefix-cmd" style={{ color: syntaxColors.keyword }}>{`tellraw `}</span>,
+      // Highlight selector '@p ' or similar in selector color
+      <span key="prefix-selector" style={{ color: syntaxColors.selector }}>{`${selectedTarget} `}</span>,
       ...tokens.map((token, idx) => {
         const tokenStart = charIndex;
         const tokenEnd = charIndex + token.length;
         charIndex = tokenEnd;
         // default syntax color
-        let color = '#e0e0e0';
-        if (token === '{' || token === '}') color = '#DA6DAC';
-        else if (token === '[' || token === ']') color = '#F1D702';
-        else if (token === ',' || token === ':') color = '#759FB8';
-        else if (token.startsWith('"') && token.endsWith('"')) {
+        let color = '#e0e0e0'; // default base color
+        if (token === '{' || token === '}') color = syntaxColors.brace;
+        else if (token === '[' || token === ']') color = syntaxColors.bracket;
+        else if (token === ',' || token === ':') color = syntaxColors.punctuation;
+        else if (/^(?:true|false|null|-?\d+(?:\.\d+)?)$/.test(token)) {
+          // numbers, booleans, null
+          color = syntaxColors.number;
+        } else if (token.startsWith('"') && token.endsWith('"')) {
           const next = tokens[idx + 1];
-          color = next === ':' ? '#e0e0e0' : '#A3BC6E';
+          // property key if next is ':'
+          color = next === ':' ? syntaxColors.property : syntaxColors.string;
         }
         const style: React.CSSProperties = { color };
         // apply background if token lies within any highlighted range
@@ -149,20 +158,19 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
     <div style={{ marginTop: 12, maxWidth: '100%' }}>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
         {/* Target selector */}
-        <SegmentedControl.Root value={target} onValueChange={setTarget} style={{ width: '120px' }}>
-          <SegmentedControl.Item value="@s">@s</SegmentedControl.Item>
+        <SegmentedControl.Root value={selectedTarget} onValueChange={handleTargetChange} style={{ width: '120px' }}>
           <SegmentedControl.Item value="@p">@p</SegmentedControl.Item>
+          <SegmentedControl.Item value="@s">@s</SegmentedControl.Item>
           <SegmentedControl.Item value="@a">@a</SegmentedControl.Item>
         </SegmentedControl.Root>
-        {/* Copy / collapse buttons */}
-        <IconButton size="2" variant="surface" onClick={handleCopy}>
-          <CopyIcon height={16} width={16} />
-        </IconButton>
-        <IconButton size="2" variant="surface" onClick={handleToggle}>
-          {collapsed
-            ? <ChevronRightIcon height={16} width={16} />
-            : <ChevronDownIcon height={16} width={16} />}
-        </IconButton>
+        {/* Copy and Collapse/Expand buttons */}
+        <Button size="2" variant="surface" onClick={handleToggle} style={{ display: 'flex', alignItems: 'center' }}>
+          {collapsed ? (
+            <><ChevronRightIcon height={16} width={16} style={{ marginRight: '4px' }} />Expand</>
+          ) : (
+            <><ChevronDownIcon height={16} width={16} style={{ marginRight: '4px' }} />Collapse</>
+          )}
+        </Button>
       </div>
       <pre
         style={{

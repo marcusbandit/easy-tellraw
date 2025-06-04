@@ -1,0 +1,29 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Git Commit and Push Info
+
+When performing `git commit`:
+- Provide a clear, descriptive commit message.
+- Stage files with `git add <file>` or `git add .` before committing.
+- Use:
+  ```
+  git commit -m "<commit message>"
+  ```
+
+When performing `git push`:
+- Ensure a remote repository URL is configured (e.g., `git@github.com:<user>/<repo>.git` or HTTPS).
+- Specify the remote name (usually `origin`) and the branch (e.g., `main`).
+- Provide authentication credentials (personal access token or SSH key).
+- For the first push to set upstream, use:
+  ```
+  git push -u origin main
+  ```
+- Subsequent pushes can use:
+  ```
+  git push
+  ```
+
+Use these steps to commit changes locally and push them to a remote repository seamlessly.

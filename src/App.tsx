@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { createEditor, Descendant, Text, Transforms, Editor as SlateEditor, Range } from "slate";
+import { createEditor, Descendant, Editor as SlateEditor, Range } from "slate";
 import "./App.css";
 import "./minecraft.css";
 import { initialValue } from "./components/TextEditor";
@@ -7,11 +7,13 @@ import Sidebar from "./components/Sidebar";
 import EditorContainer from "./components/EditorContainer";
 import ActionsPanel from "./components/ActionsPanel";
 import { useTellrawSegments } from "./hooks/useTellrawSegments";
-import { Box, Container, Flex } from "@radix-ui/themes";
-import { Slate, Editable, withReact } from "slate-react";
+import { Box, Container, Flex, Button } from "@radix-ui/themes";
+import { Slate, withReact } from "slate-react";
 import { withHistory } from "slate-history";
+import { TELLRAW_PREFIX } from "./constants";
 
 const App: React.FC = () => {
+  // State for Slate content and remount key
   const [value, setValue] = useState<Descendant[]>(() => {
     const saved = window.localStorage.getItem('editorValue');
     if (saved) {
@@ -19,6 +21,7 @@ const App: React.FC = () => {
     }
     return initialValue;
   });
+  const [slateKey, setSlateKey] = useState(0);
   const { segments, segmentPaths, tellrawJson } = useTellrawSegments(value);
   // State to hold character-level JSON splits when selection is active
   const [beforeSegs, setBeforeSegs] = useState<any[] | null>(null);
@@ -29,11 +32,14 @@ const App: React.FC = () => {
   const [clickValue, setClickValue] = useState("");
   const [hoverText, setHoverText] = useState("");
   const [clickFieldFocused, setClickFieldFocused] = useState(false);
-  const editor = useMemo(() => withHistory(withReact(createEditor())), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const editor = useMemo(() => withHistory(withReact(createEditor())), [slateKey]);
   // Track the last non-null selection to preserve highlights
   const [lastSelection, setLastSelection] = useState<Range | null>(null);
   // Ref to throttle JSON split updates
   const lastRecalcTimeRef = useRef<number>(0);
+  // Tellraw target selector state
+  const [target, setTarget] = useState<string>('@p');
 
   // Sync click and hover state when active segment changes
   useEffect(() => {
@@ -64,17 +70,6 @@ const App: React.FC = () => {
       }
     }
   }, [activeSegmentIndex, segments, clickFieldFocused]);
-
-  // Function to toggle text marks
-  const toggleMark = (format: string) => {
-    const marks: any = SlateEditor.marks(editor) || {};
-    const isActive = marks[format];
-    Transforms.setNodes(
-      editor,
-      { [format]: !isActive },
-      { match: (n) => Text.isText(n), split: true }
-    );
-  };
 
   // Update value and cache on change
   const onChange = (val: Descendant[]) => {
@@ -213,9 +208,77 @@ const App: React.FC = () => {
     }
   };
 
+  // Handler to reset editor: clear localStorage and remount Slate
+  const handleReset = () => {
+    // Clear stored content
+    window.localStorage.removeItem('editorValue');
+    // Clear selection and segment highlights
+    setLastSelection(null);
+    setActiveSegmentIndex(null);
+    setBeforeSegs(null);
+    setMarkedSegs(null);
+    setAfterSegs(null);
+    // Reset value and recreate editor
+    setValue(initialValue);
+    setSlateKey(k => k + 1);
+  };
+
+  // Handler to copy collapsed tellraw JSON to clipboard
+  const handleCopy = () => {
+    // Collapsed JSON (no pretty indent) with dynamic target
+    const collapsed = `tellraw ${target} ` + JSON.stringify(segments);
+    navigator.clipboard.writeText(collapsed);
+  };
+
+  // Import tellraw JSON or command string
+  const importJson = (input: string) => {
+    // Determine target from command
+    const tokens = input.trim().split(/\s+/);
+    if (tokens[0].replace(/^\//, '') === 'tellraw' && tokens.length >= 2 && tokens[1].startsWith('@')) {
+      setTarget(tokens[1]);
+    }
+    let jsonStr = input.trim();
+    // Strip '/tellraw' or 'tellraw' prefix if present
+    if (tokens[0].replace(/^\//, '') === 'tellraw') {
+      // Remove command and selector tokens (e.g., '/tellraw @s')
+      if (tokens.length >= 3) {
+        jsonStr = tokens.slice(2).join(' ');
+      } else {
+        const idx = jsonStr.indexOf('[');
+        jsonStr = idx >= 0 ? jsonStr.substring(idx) : jsonStr;
+      }
+    }
+    try {
+      const arr = JSON.parse(jsonStr);
+      if (!Array.isArray(arr)) throw new Error('Not an array');
+      // Convert segments to Slate value
+      const newValue = [
+        { type: 'paragraph', children: arr.map((seg: any) => {
+            const child: any = { text: seg.text || '' };
+            if (seg.color) child.color = seg.color;
+            if (seg.bold) child.bold = seg.bold;
+            if (seg.italic) child.italic = seg.italic;
+            if (seg.underline) child.underline = seg.underline;
+            if (seg.strikethrough) child.strikethrough = seg.strikethrough;
+            if (seg.obfuscated) child.obfuscated = seg.obfuscated;
+            if (seg.click_event) child.click_event = seg.click_event;
+            if (seg.hover_event) child.hover_event = seg.hover_event;
+            return child;
+          })
+        }
+      ];
+      // Persist and update state
+      window.localStorage.setItem('editorValue', JSON.stringify(newValue));
+      setValue(newValue);
+      setSlateKey(k => k + 1);
+    } catch (e: any) {
+      alert('Failed to import JSON: ' + e.message);
+    }
+  };
+
   return (
     <Box style={{ background: "var(--gray-a2)" }} p="4" minHeight="100vh">
-      <Slate
+      <Slate key={slateKey}
         editor={editor}
         initialValue={value}
         onChange={onChange}
@@ -233,6 +296,11 @@ const App: React.FC = () => {
                 markedSegments={markedSegs}
                 afterSegments={afterSegs}
                 selection={lastSelection}
+                onImport={importJson}
+                onReset={handleReset}
+                onCopy={handleCopy}
+                target={target}
+                setTarget={setTarget}
               />
               <ActionsPanel
                 clickAction={clickAction}

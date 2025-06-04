@@ -17,3 +17,14 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* PrismJS JSON token colors */
+.token.string { color: var(--syntax-string); }
+.token.number, .token.boolean, .token.null { color: var(--syntax-number); }
+.token.punctuation, .token.operator { color: var(--syntax-punctuation); }
+.token.punctuation-brace { color: var(--syntax-brace); }
+.token.punctuation-bracket { color: var(--syntax-bracket); }
+.token.property, .token.attribute { color: var(--syntax-property); }
+.token.keyword { color: var(--syntax-keyword); }
+.token.selector { color: var(--syntax-selector); }
+.token.comment { color: var(--syntax-comment); font-style: italic; }

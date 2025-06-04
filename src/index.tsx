@@ -5,6 +5,12 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import '@radix-ui/themes/styles.css';
 import { Theme } from '@radix-ui/themes';
+import { syntaxColors } from './syntaxColors';
+
+// Inject syntax highlighting colors as CSS variables
+Object.entries(syntaxColors).forEach(([name, color]) => {
+  document.documentElement.style.setProperty(`--syntax-${name}`, color as string);
+});
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
