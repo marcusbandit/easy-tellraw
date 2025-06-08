@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useState } from 'react';
-import { Container, Box, Card, Heading, Flex, Button, Dialog, Text } from '@radix-ui/themes';
+import { Box, Card, Heading, Flex, Button, Dialog, Text } from '@radix-ui/themes';
 import { Editable, useSlate } from 'slate-react';
 import { Transforms, Text as SlateText, Editor as SlateEditor, Range } from 'slate';
 import JsonOutput from './JsonOutput';
@@ -89,7 +89,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
   }, [importInput]);
 
   return (
-    <Container size="3">
+    <section style={{ width: '100%', maxWidth: 'none' }}>
       <Card size="2" variant="surface" style={{ padding: '16px', width: '100%' }}>
         <Box style={{ color: 'var(--gray-a12)' }}>
           <Heading size="5" mb="4">Minecraft Tellraw Editor</Heading>
@@ -221,7 +221,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
           </Flex>
         </Box>
       </Card>
-    </Container>
+    </section>
   );
 };
 

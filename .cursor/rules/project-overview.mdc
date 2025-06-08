@@ -1,0 +1,22 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Overview
+
+This repository `/home/bandit/projects/stylized-tellraw-editor` is a React-based Minecraft Tellraw JSON editor using Slate and Radix UI.
+
+Key files and their responsibilities:
+
+- [App.tsx](mdc:src/App.tsx): Main entry point setting up the Slate editor, Radix UI layout, import, reset, and copy handlers.
+- [components/EditorContainer.tsx](mdc:src/components/EditorContainer.tsx): Contains the rich-text Slate editor and integrates the [JsonOutput.tsx](mdc:src/components/JsonOutput.tsx) component for live Tellraw JSON rendering.
+- [components/ActionsPanel.tsx](mdc:src/components/ActionsPanel.tsx): Provides UI controls for click and hover events on text segments, using Radix `TextField` for inputs.
+- [components/JsonOutput.tsx](mdc:src/components/JsonOutput.tsx): Renders the generated Tellraw JSON with syntax highlighting and dynamic target selectors.
+- [syntaxColors.ts](mdc:src/syntaxColors.ts): Defines CSS variables for syntax token colors, injected at app startup.
+- [hooks/useTellrawSegments.ts](mdc:src/hooks/useTellrawSegments.ts): Custom React hook that parses Slate editor value into Tellraw JSON segments and tracks selection paths.
+- [constants.ts](mdc:src/constants.ts): Exports shared constants like `TELLRAW_PREFIX` and default target state.
+
+# Commit Policy
+
+The AI assistant must only stage, commit, or push changes when explicitly instructed by the user. Never perform Git operations automatically without a direct user request.

@@ -289,10 +289,10 @@ const App: React.FC = () => {
         onChange={onChange}
         onSelectionChange={handleSelectionChange}
       >
-        <Container size="4">
+        <section style={{ width: '85vw', maxWidth: 'none', margin: '0 auto' }}>
           <Flex gap="4">
             <Sidebar segments={segments} segmentPaths={segmentPaths} activeSegmentIndex={activeSegmentIndex} />
-            <Box width="100%" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <Box width="85vw" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <EditorContainer
                 tellrawJson={tellrawJson}
                 segments={segments}
@@ -321,7 +321,7 @@ const App: React.FC = () => {
               />
             </Box>
           </Flex>
-        </Container>
+        </section>
       </Slate>
     </Box>
   );
