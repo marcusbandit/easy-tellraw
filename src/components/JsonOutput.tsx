@@ -63,7 +63,6 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
       return seg;
     });
   const outputData = mapColorNames(rawData);
-  const prettyJson = prefix + JSON.stringify(outputData, null, 2);
   const prettyWithTarget = dynamicPrefix + JSON.stringify(outputData, null, 2);
   const collapsedRaw = mapColorNames(rawFull);
   const collapsedJson = dynamicPrefix + JSON.stringify(collapsedRaw);

@@ -1,8 +1,9 @@
 import React from 'react';
 import { useSlate } from 'slate-react';
-import { Transforms, Text, Editor as SlateEditor, Range } from 'slate';
+import { Transforms, Text, Range } from 'slate';
 import { Card, SegmentedControl, TextField, Heading } from '@radix-ui/themes';
 import { RocketIcon, Link2Icon, CopyIcon } from '@radix-ui/react-icons';
+import { Editor as SlateEditor } from 'slate';
 
 export interface ActionsPanelProps {
   clickAction: string;
@@ -37,6 +38,8 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   segmentPaths,
 }) => {
   const editor = useSlate();
+  const isUpdatingRef = React.useRef(false);
+  
   const ActionIcon = (clickAction === 'run_command' || clickAction === 'suggest_command')
     ? RocketIcon
     : clickAction === 'open_url'
@@ -45,33 +48,79 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
 
   // Apply clickAction changes immediately to the editor model
   React.useEffect(() => {
-    const v = clickValue;
-    const sel = editor.selection;
-    // Build the click_event object
-    const eventObj = v === ''
-      ? null
-      : clickAction === 'copy_to_clipboard'
-        ? { action: clickAction, value: v }
-        : clickAction === 'open_url'
-          ? { action: clickAction, url: v }
-          : { action: clickAction, command: v };
-    if (sel && !Range.isCollapsed(sel)) {
-      Transforms.setNodes(
-        editor,
-        { click_event: eventObj } as any,
-        { at: sel, match: (n: any) => Text.isText(n), split: true }
-      );
-    } else if (segmentPaths && activeSegmentIndex != null) {
-      const path = segmentPaths[activeSegmentIndex] || undefined;
-      if (path) {
+    // Skip if we're already updating to prevent infinite loops
+    if (isUpdatingRef.current) {
+      console.log('🎯 Skipping ActionsPanel update - already updating');
+      return;
+    }
+    
+    console.log('🎯 ActionsPanel useEffect triggered:', {
+      clickAction,
+      clickValue,
+      activeSegmentIndex,
+      hasSelection: !!editor.selection,
+      selectionCollapsed: editor.selection ? Range.isCollapsed(editor.selection) : null
+    });
+    
+    try {
+      isUpdatingRef.current = true;
+      
+      const v = clickValue;
+      const sel = editor.selection;
+      // Build the click_event object
+      const eventObj = v === ''
+        ? null
+        : clickAction === 'copy_to_clipboard'
+          ? { action: clickAction, value: v }
+          : clickAction === 'open_url'
+            ? { action: clickAction, url: v }
+            : { action: clickAction, command: v };
+      
+      console.log('🎯 Built event object:', eventObj);
+      
+      if (sel && !Range.isCollapsed(sel)) {
+        console.log('🎯 Applying to selection range');
         Transforms.setNodes(
           editor,
           { click_event: eventObj } as any,
-          { at: path }
+          { at: sel, match: (n: any) => Text.isText(n), split: true }
         );
+      } else if (segmentPaths && activeSegmentIndex != null) {
+        const path = segmentPaths[activeSegmentIndex] || undefined;
+        console.log('🎯 Applying to segment path:', path, 'index:', activeSegmentIndex);
+        if (path) {
+          // Check if the path exists before trying to set nodes
+          try {
+            const node = SlateEditor.node(editor, path);
+            if (node) {
+              console.log('🎯 Path exists, applying click_event');
+              Transforms.setNodes(
+                editor,
+                { click_event: eventObj } as any,
+                { at: path }
+              );
+            } else {
+              console.log('🎯 Path exists but node is null');
+            }
+          } catch (error) {
+            // Path doesn't exist, ignore the error
+            console.warn('🎯 Path not found for segment:', path, error);
+          }
+        } else {
+          console.log('🎯 No path found for active segment');
+        }
+      } else {
+        console.log('🎯 No selection or active segment to apply to');
       }
+    } catch (error) {
+      console.warn('🎯 Error updating click event:', error);
+    } finally {
+      // Reset the flag after a short delay to allow onChange to complete
+      setTimeout(() => {
+        isUpdatingRef.current = false;
+      }, 10);
     }
-  }, [clickAction]);
+  }, [clickAction, clickValue, editor, activeSegmentIndex, segmentPaths]);
 
   return (
     <Card size="2" variant="surface">
@@ -86,38 +135,17 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       <TextField.Root
         value={clickValue}
         onChange={e => {
-          const v = e.target.value;
-          setClickValue(v);
-          const sel = editor.selection;
-          if (sel && !Range.isCollapsed(sel)) {
-            // If there is a selection, update only the marked text
-            if (v === '') {
-              Transforms.setNodes(
-                editor,
-                { click_event: null } as any,
-                { at: sel, match: (n: any) => Text.isText(n), split: true }
-              );
-            } else {
-              const eventObj = clickAction === 'copy_to_clipboard'
-                ? { action: clickAction, value: v }
-                : clickAction === 'open_url'
-                ? { action: clickAction, url: v }
-                : { action: clickAction, command: v };
-              Transforms.setNodes(
-                editor,
-                { click_event: eventObj } as any,
-                { at: sel, match: (n: any) => Text.isText(n), split: true }
-              );
-            }
-          } else if (segmentPaths && activeSegmentIndex != null) {
-            // Fallback: update by active segment index
-            const path = segmentPaths[activeSegmentIndex] || undefined;
-            if (path) {
+          try {
+            const v = e.target.value;
+            setClickValue(v);
+            const sel = editor.selection;
+            if (sel && !Range.isCollapsed(sel)) {
+              // If there is a selection, update only the marked text
               if (v === '') {
                 Transforms.setNodes(
                   editor,
                   { click_event: null } as any,
-                  { at: path }
+                  { at: sel, match: (n: any) => Text.isText(n), split: true }
                 );
               } else {
                 const eventObj = clickAction === 'copy_to_clipboard'
@@ -128,10 +156,42 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
                 Transforms.setNodes(
                   editor,
                   { click_event: eventObj } as any,
-                  { at: path }
+                  { at: sel, match: (n: any) => Text.isText(n), split: true }
                 );
               }
+            } else if (segmentPaths && activeSegmentIndex != null) {
+              // Fallback: update by active segment index
+              const path = segmentPaths[activeSegmentIndex] || undefined;
+              if (path) {
+                try {
+                  const node = SlateEditor.node(editor, path);
+                  if (node) {
+                    if (v === '') {
+                      Transforms.setNodes(
+                        editor,
+                        { click_event: null } as any,
+                        { at: path }
+                      );
+                    } else {
+                      const eventObj = clickAction === 'copy_to_clipboard'
+                        ? { action: clickAction, value: v }
+                        : clickAction === 'open_url'
+                        ? { action: clickAction, url: v }
+                        : { action: clickAction, command: v };
+                      Transforms.setNodes(
+                        editor,
+                        { click_event: eventObj } as any,
+                        { at: path }
+                      );
+                    }
+                  }
+                } catch (error) {
+                  console.warn('Path not found for segment:', path);
+                }
+              }
             }
+          } catch (error) {
+            console.warn('Error updating click value:', error);
           }
         }}
         onFocus={() => setClickFieldFocused(true)}

@@ -101,6 +101,99 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
               decorate={decorate}
               renderLeaf={props => <Leaf {...props} />}
               placeholder="Enter text..."
+              onDoubleClick={event => {
+                console.log('🖱️ Double-click detected');
+                // Prevent default double-click word selection
+                event.preventDefault();
+                event.stopPropagation();
+                
+                // Get the current selection point
+                const sel = editor.selection;
+                console.log('🖱️ Current selection before double-click:', sel);
+                
+                if (sel && Range.isCollapsed(sel)) {
+                  const [node, path] = SlateEditor.node(editor, sel.anchor.path);
+                  if (SlateText.isText(node)) {
+                    const text = node.text;
+                    const offset = sel.anchor.offset;
+                    
+                    console.log('🖱️ Finding word boundaries at offset:', offset, 'in text:', text);
+                    
+                    // Find word boundaries
+                    let start = offset;
+                    let end = offset;
+                    
+                    // Find start of word
+                    while (start > 0 && /\S/.test(text[start - 1])) {
+                      start--;
+                    }
+                    
+                    // Find end of word
+                    while (end < text.length && /\S/.test(text[end])) {
+                      end++;
+                    }
+                    
+                    console.log('🖱️ Word boundaries found:', { start, end, word: text.substring(start, end) });
+                    
+                    // Only select if we found a word
+                    if (start < end) {
+                      const newSelection = {
+                        anchor: { path, offset: start },
+                        focus: { path, offset: end }
+                      };
+                      console.log('🖱️ Creating new selection:', newSelection);
+                      Transforms.select(editor, newSelection);
+                    } else {
+                      console.log('🖱️ No word found at cursor position');
+                    }
+                  } else {
+                    console.log('🖱️ Current node is not text:', node);
+                  }
+                } else {
+                  console.log('🖱️ No collapsed selection to work with');
+                }
+              }}
+              onMouseDown={event => {
+                console.log('🖱️ Mouse down - detail:', event.detail);
+                // Prevent default selection behavior that might interfere with our system
+                if (event.detail === 2) {
+                  // Double click - let our custom onDoubleClick handler deal with it
+                  console.log('🖱️ Double click detected in mouse down - letting onDoubleClick handle it');
+                  return;
+                } else if (event.detail === 3) {
+                  // Triple click - prevent default and handle line selection
+                  console.log('🖱️ Triple click detected - handling line selection');
+                  event.preventDefault();
+                  event.stopPropagation();
+                  
+                  // Get the current selection point
+                  const sel = editor.selection;
+                  console.log('🖱️ Current selection before triple-click:', sel);
+                  
+                  if (sel && Range.isCollapsed(sel)) {
+                    const [node, path] = SlateEditor.node(editor, sel.anchor.path);
+                    if (SlateText.isText(node)) {
+                      const text = node.text;
+                      
+                      console.log('🖱️ Selecting entire line:', text);
+                      
+                      // Select the entire text node (line)
+                      const newSelection = {
+                        anchor: { path, offset: 0 },
+                        focus: { path, offset: text.length }
+                      };
+                      console.log('🖱️ Creating line selection:', newSelection);
+                      Transforms.select(editor, newSelection);
+                    } else {
+                      console.log('🖱️ Current node is not text for line selection:', node);
+                    }
+                  } else {
+                    console.log('🖱️ No collapsed selection for line selection');
+                  }
+                  return;
+                }
+                console.log('🖱️ Single click - allowing default behavior');
+              }}
               onKeyDown={event => {
                 if (event.ctrlKey) {
                   const key = event.key.toLowerCase();

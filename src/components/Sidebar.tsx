@@ -3,13 +3,6 @@ import { useSlate } from 'slate-react';
 import { Card, Heading } from '@radix-ui/themes';
 import { ToggleButton, ColorButton } from './TextSettings';
 
-const clickPlaceholders: Record<string, string> = {
-  run_command: 'Command to run... (e.g. say Hello)',
-  suggest_command: 'Command to suggest... (e.g. say Hello)',
-  copy_to_clipboard: 'Text to copy... (e.g. Hello)',
-  open_url: 'URL to open... (e.g. https://example.com)',
-};
-
 export interface SidebarProps {
   segments?: any[];
   segmentPaths?: (number[] | null)[];
@@ -18,11 +11,12 @@ export interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ segments, segmentPaths, activeSegmentIndex }) => {
   const editor = useSlate();
-  // Determine active segment formatting
   const activeSeg = (segments && activeSegmentIndex != null && segments[activeSegmentIndex] != null)
     ? segments[activeSegmentIndex]
     : {};
-  const activePath = (segmentPaths && activeSegmentIndex != null) ? segmentPaths[activeSegmentIndex] || undefined : undefined;
+  const activePath = (segmentPaths && activeSegmentIndex != null)
+    ? segmentPaths[activeSegmentIndex] || undefined
+    : undefined;
 
   return (
     <div style={{ width: '240px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
