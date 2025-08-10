@@ -7,11 +7,15 @@ import Sidebar from "./components/Sidebar";
 import EditorContainer from "./components/EditorContainer";
 import ActionsPanel from "./components/ActionsPanel";
 import GraphEditor from "./components/ui/GraphEditor";
+import ConversationGraph from "./components/ui/ConversationGraph";
+import EnhancedConversationGraph from "./components/ui/EnhancedConversationGraph";
 import { useTellrawSegments } from "./hooks/useTellrawSegments";
 import { Flex, Tabs, Box } from "@radix-ui/themes";
 import { Slate, withReact } from "slate-react";
 import { withHistory } from "slate-history";
 import { Transforms } from "slate";
+import { flattenSlateFragmentToCharSegments, squashAdjacentSegments } from "./lib/segments";
+import { DialogueGraph } from "./types/dialogue";
 
 const App: React.FC = () => {
   // State for Slate content and remount key
@@ -44,6 +48,11 @@ const App: React.FC = () => {
   // Tellraw target selector state
   const [target, setTarget] = useState<string>('@p');
   const [activeTab, setActiveTab] = useState<'editor' | 'graph'>('editor');
+  const [dialogueGraph, setDialogueGraph] = useState<DialogueGraph | null>(null);
+  // Track last opened tellraw JSON file path for caching and hot reload (optional future use)
+  const [lastTellrawFilePath, setLastTellrawFilePath] = useState<string | null>(() => {
+    try { return window.localStorage.getItem('lastTellrawFilePath'); } catch { return null; }
+  });
 
   // Helper function to safely update editor without triggering onChange loops
   const safeUpdateEditor = useCallback((operation: () => void) => {
@@ -106,42 +115,16 @@ const App: React.FC = () => {
     if (sel && !Range.isCollapsed(sel) && now - lastRecalcTimeRef.current > 100) {
       console.log('🔄 Recalculating split JSON - selection:', sel);
       lastRecalcTimeRef.current = now;
-      // flatten and squash functions
-      const flatten = (nodes: any[]) => {
-        const arr: any[] = [];
-        nodes.forEach((node: any) => {
-          if (node.children) node.children.forEach((child: any) => {
-            if (!child.text) return;
-            for (const char of child.text) arr.push({ ...child, text: char });
-          });
-        });
-        return arr;
-      };
-      const squash = (segs: any[]) => {
-        const res: any[] = [];
-        segs.forEach(seg => {
-          if (res.length > 0) {
-            const prev = res[res.length - 1];
-            const keys = Object.keys(seg).filter(k => k !== 'text');
-            if (keys.every(k => JSON.stringify(prev[k]) === JSON.stringify(seg[k]))) {
-              prev.text += seg.text;
-              return;
-            }
-          }
-          res.push({ ...seg });
-        });
-        return res;
-      };
       const frag = SlateEditor.fragment(editor, sel as any);
       console.log('📦 Setting marked segments:', frag.length, 'items');
-      setMarkedSegs(squash(flatten(frag)));
+      setMarkedSegs(squashAdjacentSegments(flattenSlateFragmentToCharSegments(frag)) as any[]);
       const start = SlateEditor.start(editor, []);
       const end = SlateEditor.end(editor, []);
       const beforeFrag = SlateEditor.fragment(editor, { anchor: start, focus: Range.start(sel) } as any);
       const afterFrag = SlateEditor.fragment(editor, { anchor: Range.end(sel), focus: end } as any);
       console.log('📦 Setting before/after segments');
-      setBeforeSegs(squash(flatten(beforeFrag)));
-      setAfterSegs(squash(flatten(afterFrag)));
+      setBeforeSegs(squashAdjacentSegments(flattenSlateFragmentToCharSegments(beforeFrag)) as any[]);
+      setAfterSegs(squashAdjacentSegments(flattenSlateFragmentToCharSegments(afterFrag)) as any[]);
     } else {
       // Clear split JSON when selection is collapsed or no marking
       if (beforeSegs || markedSegs || afterSegs) {
@@ -199,50 +182,9 @@ const App: React.FC = () => {
       return;
     }
     if (!isCollapsed) {
-      // Helper to flatten fragment nodes to tellraw-like segments
-      const flattenNodes = (nodes: any[]) => {
-        const arr: any[] = [];
-        nodes.forEach((node: any) => {
-          if (node.children) {
-            node.children.forEach((child: any) => {
-              if (!child.text) return;
-              // Split into individual characters
-              for (const char of child.text) {
-                const seg: any = { text: char, color: child.color || '#ffffff' };
-                if (child.bold) seg.bold = true;
-                if (child.italic) seg.italic = true;
-                if (child.underline) seg.underline = true;
-                if (child.strikethrough) seg.strikethrough = true;
-                if (child.obfuscated) seg.obfuscated = true;
-                if (child.click_event) seg.click_event = child.click_event;
-                if (child.hover_event) seg.hover_event = child.hover_event;
-                arr.push(seg);
-              }
-            });
-          }
-        });
-        return arr;
-      };
-      // Helper to squash adjacent segments with identical attributes into longer text runs
-      const squashSegments = (segs: any[]) => {
-        const result: any[] = [];
-        for (const seg of segs) {
-          if (result.length > 0) {
-            const prev = result[result.length - 1];
-            const aKeys = Object.keys(prev).filter(k => k !== 'text');
-            const bKeys = Object.keys(seg).filter(k => k !== 'text');
-            if (aKeys.length === bKeys.length && aKeys.every(key => JSON.stringify(prev[key]) === JSON.stringify(seg[key]))) {
-              prev.text += seg.text;
-              continue;
-            }
-          }
-          result.push({ ...seg });
-        }
-        return result;
-      };
       // Compute JSON for marked text
       const selFrag = SlateEditor.fragment(editor, sel as any);
-      const squashedMarked = squashSegments(flattenNodes(selFrag));
+      const squashedMarked = squashAdjacentSegments(flattenSlateFragmentToCharSegments(selFrag));
       setMarkedSegs(squashedMarked);
       // compute before/after
       const docStart = SlateEditor.start(editor, []);
@@ -251,8 +193,8 @@ const App: React.FC = () => {
       const selEnd = Range.end(sel);
       const beforeFrag = SlateEditor.fragment(editor, { anchor: docStart, focus: selStart } as any);
       const afterFrag = SlateEditor.fragment(editor, { anchor: selEnd, focus: docEnd } as any);
-      const squashedBefore = squashSegments(flattenNodes(beforeFrag));
-      const squashedAfter = squashSegments(flattenNodes(afterFrag));
+      const squashedBefore = squashAdjacentSegments(flattenSlateFragmentToCharSegments(beforeFrag));
+      const squashedAfter = squashAdjacentSegments(flattenSlateFragmentToCharSegments(afterFrag));
       setBeforeSegs(squashedBefore);
       setAfterSegs(squashedAfter);
     }
@@ -278,6 +220,11 @@ const App: React.FC = () => {
     // Collapsed JSON (no pretty indent) with dynamic target
     const collapsed = `tellraw ${target} ` + JSON.stringify(segments);
     navigator.clipboard.writeText(collapsed);
+  };
+
+  const handleImportDialogue = (graph: DialogueGraph) => {
+    setDialogueGraph(graph);
+    setActiveTab('graph');
   };
 
   // Import tellraw JSON or command string
@@ -325,6 +272,31 @@ const App: React.FC = () => {
       alert('Failed to import JSON: ' + e.message);
     }
   };
+
+  // Optional helper to import JSON from a file path and cache path
+  const importJsonFromPath = useCallback(async (filePath: string) => {
+    try {
+      // Only available in Electron
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+      if (!ipcRenderer) return;
+      const text: string = await ipcRenderer.invoke('read-file', filePath);
+      importJson(text);
+      try { window.localStorage.setItem('lastTellrawFilePath', filePath); } catch {}
+      setLastTellrawFilePath(filePath);
+      ipcRenderer.send('watch-file', filePath);
+      // Listen once to refresh from disk
+      const onChanged = async (_event: any, payload: { path: string }) => {
+        if (payload?.path === filePath) {
+          const nextText: string = await ipcRenderer.invoke('read-file', filePath);
+          importJson(nextText);
+        }
+      };
+      ipcRenderer.on('file-changed', onChanged);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Clear selection when switching to graph mode to prevent freezes
   const handleTabChange = (value: string) => {
@@ -386,6 +358,7 @@ const App: React.FC = () => {
                           onCopy={handleCopy}
                           target={target}
                           setTarget={setTarget}
+                          onImportDialogue={handleImportDialogue}
                         />
                         <ActionsPanel
                           clickAction={clickAction}
@@ -408,7 +381,11 @@ const App: React.FC = () => {
             
             {activeTab === 'graph' && (
               <Tabs.Content value="graph" style={{ flex: 1 }}>
-                <GraphEditor segments={segments} />
+                {dialogueGraph ? (
+                  <EnhancedConversationGraph graph={dialogueGraph} />
+                ) : (
+                  <GraphEditor segments={segments} />
+                )}
               </Tabs.Content>
             )}
           </Box>

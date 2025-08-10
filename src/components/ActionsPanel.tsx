@@ -126,7 +126,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
     <Card size="2" variant="surface">
       <Heading size="5" mb="2">Actions</Heading>
       <Heading size="2" mb="1" mt="2">Click</Heading>
-      <SegmentedControl.Root defaultValue={clickAction} onValueChange={setClickAction} style={{ width: '100%', marginTop: '8px' }}>
+      <SegmentedControl.Root value={clickAction} onValueChange={setClickAction} style={{ width: '100%', marginTop: '8px' }}>
         <SegmentedControl.Item value="run_command">Run command</SegmentedControl.Item>
         <SegmentedControl.Item value="suggest_command">Suggest command</SegmentedControl.Item>
         <SegmentedControl.Item value="copy_to_clipboard">Copy to clipboard</SegmentedControl.Item>
@@ -209,7 +209,37 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       <Heading size="2" mb="1" mt="2">Hover</Heading>
       <TextField.Root
         value={hoverText}
-        onChange={e => setHoverText(e.target.value)}
+        onChange={e => {
+          const v = e.target.value;
+          setHoverText(v);
+          try {
+            const sel = editor.selection;
+            const hoverObj = v === '' ? null : { value: v };
+            if (sel && !Range.isCollapsed(sel)) {
+              Transforms.setNodes(
+                editor,
+                { hover_event: hoverObj } as any,
+                { at: sel, match: (n: any) => Text.isText(n), split: true }
+              );
+            } else if (segmentPaths && activeSegmentIndex != null) {
+              const path = segmentPaths[activeSegmentIndex] || undefined;
+              if (path) {
+                try {
+                  const node = SlateEditor.node(editor, path);
+                  if (node) {
+                    Transforms.setNodes(
+                      editor,
+                      { hover_event: hoverObj } as any,
+                      { at: path }
+                    );
+                  }
+                } catch {}
+              }
+            }
+          } catch (err) {
+            console.warn('Error updating hover value:', err);
+          }
+        }}
         placeholder="hover text"
         size="2"
         variant="surface"

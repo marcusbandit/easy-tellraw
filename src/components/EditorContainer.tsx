@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { Box, Card, Heading, Flex, Button, Dialog, Text } from '@radix-ui/themes';
 import { Editable, useSlate } from 'slate-react';
 import { Transforms, Text as SlateText, Editor as SlateEditor, Range } from 'slate';
@@ -7,6 +7,8 @@ import { Leaf } from './TextEditor';
 import Editor from 'react-simple-code-editor';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-json';
+import { parseDialogue } from '../lib/dialogueParser';
+import { DialogueGraph } from '../types/dialogue';
 
 interface EditorContainerProps {
   tellrawJson: string;
@@ -21,6 +23,7 @@ interface EditorContainerProps {
   onCopy: () => void;
   target: string;
   setTarget: (value: string) => void;
+  onImportDialogue: (graph: DialogueGraph) => void;
 }
 
 const EditorContainer: React.FC<EditorContainerProps> = ({
@@ -36,10 +39,18 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
   onCopy,
   target,
   setTarget,
+  onImportDialogue,
 }) => {
   const editor = useSlate();
   const [importInput, setImportInput] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const dialogueFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [watchedFilePath, setWatchedFilePath] = useState<string | null>(null);
+
+  // Electron ipcRenderer (available in Electron with nodeIntegration)
+  const ipcRenderer: any = (typeof window !== 'undefined' && (window as any).require)
+    ? (window as any).require('electron').ipcRenderer
+    : null;
 
   // Decorate text nodes overlapping the selection range
   const decorate = useCallback(([node, path]: any) => {
@@ -87,6 +98,66 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
       setImportError(e.message);
     }
   }, [importInput]);
+
+  // Helper: Load dialogue from a filesystem path, cache path, and start watching
+  const loadDialogueFromPath = useCallback(async (filePath: string, persist: boolean) => {
+    if (!ipcRenderer) return;
+    try {
+      const text: string = await ipcRenderer.invoke('read-file', filePath);
+      const graph = parseDialogue(text);
+      onImportDialogue(graph);
+      if (persist) {
+        try { window.localStorage.setItem('lastDialogueFilePath', filePath); } catch {}
+      }
+      // Start watching (this also clears any previous watcher in main)
+      ipcRenderer.send('watch-file', filePath);
+      setWatchedFilePath(filePath);
+    } catch (err: any) {
+      alert('Failed to open dialogue file: ' + (err?.message || String(err)));
+    }
+  }, [ipcRenderer, onImportDialogue]);
+
+  // On mount: if we have a cached dialogue path, load it and start watching
+  useEffect(() => {
+    if (!ipcRenderer) return;
+    const lastPath = window.localStorage.getItem('lastDialogueFilePath');
+    if (lastPath) {
+      loadDialogueFromPath(lastPath, false);
+    }
+    // Listen for change events from main to hot-reload
+    const onChanged = (_event: any, payload: { path: string; eventType: string }) => {
+      if (payload?.path && payload.path === watchedFilePath) {
+        loadDialogueFromPath(payload.path, false);
+      }
+    };
+    const onError = (_event: any, payload: { path: string; message: string }) => {
+      console.warn('File watch error:', payload);
+    };
+    ipcRenderer.on('file-changed', onChanged);
+    ipcRenderer.on('file-watch-error', onError);
+    return () => {
+      ipcRenderer.removeListener('file-changed', onChanged);
+      ipcRenderer.removeListener('file-watch-error', onError);
+      // Stop watching when component unmounts
+      ipcRenderer.send('unwatch-file');
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ipcRenderer, watchedFilePath]);
+
+  // Open native file dialog for dialogue import
+  const handleOpenDialogueFile = async () => {
+    if (!ipcRenderer) {
+      // Fallback to hidden input if not in Electron
+      dialogueFileInputRef.current?.click();
+      return;
+    }
+    const result = await ipcRenderer.invoke('open-file-dialog', {
+      filters: [{ name: 'Dialogue Text', extensions: ['txt'] }]
+    });
+    if (!result?.canceled && result.filePaths && result.filePaths[0]) {
+      await loadDialogueFromPath(result.filePaths[0], true);
+    }
+  };
 
   return (
     <section style={{ width: '100%', maxWidth: 'none' }}>
@@ -246,6 +317,28 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
             onTargetChange={setTarget}
           />
           <Flex justify="end" gap="2" mt="4">
+            {/* Hidden file input for dialogue import */}
+            <input
+              ref={dialogueFileInputRef}
+              type="file"
+              accept=".txt"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const graph = parseDialogue(text);
+                  onImportDialogue(graph);
+                } catch (err: any) {
+                  alert('Failed to import dialogue: ' + (err?.message || String(err)));
+                } finally {
+                  // reset input so selecting the same file again still triggers change
+                  if (dialogueFileInputRef.current) dialogueFileInputRef.current.value = '';
+                }
+              }}
+            />
+            <Button variant="surface" size="2" onClick={handleOpenDialogueFile}>Import Dialogue (.txt)</Button>
             <Dialog.Root>
               <Dialog.Trigger>
                 <Button variant="surface" size="2">Import</Button>
