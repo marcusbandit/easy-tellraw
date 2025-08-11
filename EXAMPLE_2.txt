@@ -25,8 +25,19 @@ Jordan: {italic}I’m not sure we have time for this...{/}
 
 @market_browse
 Merchant: We have potions, weapons, and secrets.  
-[Buy potion -> shop:potions/buy_health]{class=success} [Buy sword -> shop:weapons/buy_sword]{class=success} [Ask about rumors -> @market_rumors]
+[Buy potion -> shop:potions/buy_health]{class=success} [Buy sword -> shop:weapons/buy_sword]{class=success} [Buy shield -> shop:armor/buy_shield]{class=success} [Buy cloak -> shop:armor/buy_cloak]{class=success}
+[Buy lockpick -> shop:tools/buy_lockpick]{class=success} [Buy lantern -> shop:tools/buy_lantern]{class=success} [Buy map -> shop:tools/buy_map]{class=success} [Ask about rumors -> @market_rumors]
+[Buy chain -> shop:tools/buy_chain]{class=success}
 Kara: Or we could {color=#FF00FF}steal{/} something. [Steal -> @market_steal]{class=danger}
+Merchant: Anything else catch your eye?  
+[Buy rope -> shop:tools/buy_rope]{class=success} [Buy apple -> shop:food/buy_apple]{class=success} [Buy mysterious box -> shop:misc/buy_mystery_box]{class=warning} [Ask for discount -> @market_discount]
+
+@market_discount
+Merchant: For you, a special price! [Accept offer -> shop:apply_discount]{class=success} [Haggle more -> @market_haggle]{class=warning} [Decline -> @market_browse]
+
+@market_haggle
+Merchant: Hmm... you drive a hard bargain. [Final offer -> shop:apply_final_discount]{class=success} [No thanks -> @market_browse]
+
 
 @market_rumors
 Merchant: They say the {bold}Elder{/} is hiding something in the forest. [Go to forest -> @forest_entry] [Back -> @market_browse]

@@ -11,7 +11,7 @@ interface ConversationGraphProps {
 type SceneLineData = { text: string; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean; choices?: OptionData[] };
 type OptionData = { id: string; label: string; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean };
 
-const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineData[]; options: OptionData[]; isHovered?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number } }> = ({ data }) => {
+const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineData[]; options: OptionData[]; isHovered?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number } }> = ({ data }) => {
   return (
     <div style={{
       padding: '12px',
@@ -30,6 +30,13 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
       {(typeof data.debugOwnHeight === 'number' || typeof data.debugTotalHeight === 'number') && (
         <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', fontSize: 10, color: '#aaa', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
           {`Own: ${Math.round((data.debugOwnHeight ?? 0) as number)}, Total: ${Math.round((data.debugTotalHeight ?? data.debugHeight ?? 0) as number)}`}
+        </div>
+      )}
+      {/* Width debug on the left side */}
+      {(typeof data.debugOwnWidth === 'number' || typeof data.debugTotalWidth === 'number') && (
+        <div style={{ position: 'absolute', left: -80, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: '#aaa', pointerEvents: 'none', textAlign: 'right', lineHeight: 1.3 }}>
+          <div>{`Own: ${Math.round((data.debugOwnWidth ?? 0) as number)}`}</div>
+          <div>{`Total: ${Math.round((data.debugTotalWidth ?? data.debugOwnWidth ?? 0) as number)}`}</div>
         </div>
       )}
       {/* Center-left target handle ("in" anchor) */}
@@ -98,7 +105,7 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
   );
 };
 
-const GhostNode: React.FC<{ data: { label: string; isHovered?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number } }> = ({ data }) => {
+const GhostNode: React.FC<{ data: { label: string; isHovered?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number } }> = ({ data }) => {
   return (
     <div style={{
       padding: '8px 10px',
@@ -114,6 +121,13 @@ const GhostNode: React.FC<{ data: { label: string; isHovered?: boolean; debugHei
       {(typeof data.debugOwnHeight === 'number' || typeof data.debugTotalHeight === 'number') && (
         <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', fontSize: 10, color: '#aaa', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
           {`Own: ${Math.round((data.debugOwnHeight ?? 0) as number)}, Total: ${Math.round((data.debugTotalHeight ?? data.debugHeight ?? 0) as number)}`}
+        </div>
+      )}
+      {/* Width debug on the left side */}
+      {(typeof data.debugOwnWidth === 'number' || typeof data.debugTotalWidth === 'number') && (
+        <div style={{ position: 'absolute', left: -80, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: '#aaa', pointerEvents: 'none', textAlign: 'right', lineHeight: 1.3 }}>
+          <div>{`Own: ${Math.round((data.debugOwnWidth ?? 0) as number)}`}</div>
+          <div>{`Total: ${Math.round((data.debugTotalWidth ?? data.debugOwnWidth ?? 0) as number)}`}</div>
         </div>
       )}
       <Handle type="target" position={Position.Left} id="in" style={{ left: -8, background: '#666', width: 10, height: 10, top: '50%', transform: 'translateY(-50%)' }} />
@@ -136,6 +150,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   const draggedIdsRef = useRef<Set<string>>(new Set());
   const posRef = useRef<Record<string, { x: number; y: number }>>({});
   const velRef = useRef<Record<string, { vx: number; vy: number }>>({});
+  const idleFramesRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [worldCenter, setWorldCenter] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const targetCentersRef = useRef<Record<string, { x: number; y: number }>>({});
@@ -143,9 +158,19 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   // Transform is tracked via onMove into transformRef to avoid requiring useStore
   // When hovering one instance of a scene, highlight all instances by tracking the logical scene id
   const [hoveredSceneId, setHoveredSceneId] = useState<string | null>(null);
+  // Cached maps for performance
+  const parentToChildrenRef = useRef<Record<string, string[]>>({});
+  const ownHeightMapRef = useRef<Record<string, number>>({});
+  const totalHeightMapRef = useRef<Record<string, number>>({});
+  const ownWidthMapRef = useRef<Record<string, number>>({});
+  const totalWidthMapRef = useRef<Record<string, number>>({});
+  const totalsDirtyRef = useRef<boolean>(true);
+  const lastDebugUpdateRef = useRef<number>(0);
+  const [debugVersion, setDebugVersion] = useState(0);
   // Physics parameters (tunable)
   const [linkDistance, setLinkDistance] = useState(120);
   const [smoothingAlpha, setSmoothingAlpha] = useState(0.1);
+  const [simTick, setSimTick] = useState(0);
 
   const layout = useMemo(() => {
     if (!graph) return { nodes: [], edges: [] };
@@ -380,6 +405,124 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     didSimulateRef.current = true; // disable old relaxer
   }, [layout.nodes, layout.edges, setGraphNodes, setEdges]);
 
+  // Build parent->children mapping when nodes/edges change
+  useEffect(() => {
+    const mapping: Record<string, string[]> = {};
+    (graphNodes as any[]).forEach((n: any) => { mapping[n.id] = mapping[n.id] || []; });
+    (edges as any[]).forEach((e: any) => {
+      const s = String(e.source);
+      const t = String(e.target);
+      if (!mapping[s]) mapping[s] = [];
+      mapping[s].push(t);
+    });
+    parentToChildrenRef.current = mapping;
+    totalsDirtyRef.current = true;
+    scheduleTotalsCompute();
+  }, [graphNodes, edges]);
+
+  // Track measured heights and mark totals dirty if changed
+  useEffect(() => {
+    const nextHeights: Record<string, number> = {};
+    const nextWidths: Record<string, number> = {};
+    (graphNodes as any[]).forEach((n: any) => {
+      const fallbackH = n.type === 'ghost' ? 40 : 160;
+      const fallbackW = n.type === 'ghost' ? 140 : 520;
+      nextHeights[n.id] = (n as any).height ?? fallbackH;
+      nextWidths[n.id] = (n as any).width ?? fallbackW;
+    });
+    const prev = ownHeightMapRef.current;
+    const prevW = ownWidthMapRef.current;
+    let changed = false;
+    const keysArr = Array.from(new Set([...Object.keys(prev), ...Object.keys(nextHeights)]));
+    for (let i = 0; i < keysArr.length; i++) {
+      const k = keysArr[i];
+      if ((prev[k] ?? -1) !== (nextHeights[k] ?? -1)) { changed = true; break; }
+    }
+    if (!changed) {
+      const wKeys = Array.from(new Set([...Object.keys(prevW), ...Object.keys(nextWidths)]));
+      for (let i = 0; i < wKeys.length; i++) {
+        const k = wKeys[i];
+        if ((prevW[k] ?? -1) !== (nextWidths[k] ?? -1)) { changed = true; break; }
+      }
+    }
+    if (changed) {
+      ownHeightMapRef.current = nextHeights;
+      ownWidthMapRef.current = nextWidths;
+      totalsDirtyRef.current = true;
+      scheduleTotalsCompute();
+    }
+  }, [graphNodes]);
+
+  // Idle-compute totals when dirty
+  const scheduleTotalsCompute = useCallback(() => {
+    if (!totalsDirtyRef.current) return;
+    const run = () => {
+      if (!totalsDirtyRef.current) return;
+      const mapping = parentToChildrenRef.current;
+      const own = ownHeightMapRef.current;
+      const ownW = ownWidthMapRef.current;
+      const GAP = 12;
+      const totals: Record<string, number> = {};
+      const totalsW: Record<string, number> = {};
+      const visiting = new Set<string>();
+      const visitingW = new Set<string>();
+      const compute = (id: string): number => {
+        if (totals[id] !== undefined) return totals[id];
+        if (visiting.has(id)) return own[id] ?? 0;
+        visiting.add(id);
+        const kids = mapping[id] || [];
+        let total: number;
+        if (kids.length === 0) {
+          total = own[id] ?? 0;
+        } else {
+          let sum = 0;
+          for (const k of kids) sum += compute(k);
+          total = sum + GAP * Math.max(0, kids.length - 1);
+        }
+        visiting.delete(id);
+        totals[id] = total;
+        return total;
+      };
+      const computeW = (id: string): number => {
+        if (totalsW[id] !== undefined) return totalsW[id];
+        if (visitingW.has(id)) return ownW[id] ?? 0;
+        visitingW.add(id);
+        const kids = mapping[id] || [];
+        let total: number;
+        if (kids.length === 0) {
+          total = ownW[id] ?? 0;
+        } else if (kids.length === 1) {
+          const child = kids[0];
+          total = (ownW[id] ?? 0) + linkDistance + computeW(child);
+        } else {
+          // For branching, take the max width among children chains side-by-side
+          let maxChild = 0;
+          for (const k of kids) {
+            const w = computeW(k);
+            if (w > maxChild) maxChild = w;
+          }
+          total = (ownW[id] ?? 0) + linkDistance + maxChild;
+        }
+        visitingW.delete(id);
+        totalsW[id] = total;
+        return total;
+      };
+      (graphNodes as any[]).forEach((n: any) => compute(n.id));
+      (graphNodes as any[]).forEach((n: any) => computeW(n.id));
+      totalHeightMapRef.current = totals;
+      totalWidthMapRef.current = totalsW;
+      totalsDirtyRef.current = false;
+      const now = Date.now();
+      if (now - lastDebugUpdateRef.current > 180) {
+        lastDebugUpdateRef.current = now;
+        setDebugVersion(v => v + 1);
+      }
+    };
+    const ric: any = (window as any)?.requestIdleCallback;
+    if (typeof ric === 'function') ric(run, { timeout: 300 });
+    else setTimeout(run, 0);
+  }, [graphNodes]);
+
   // Track container size and compute world center
   useEffect(() => {
     const el = containerRef.current;
@@ -437,20 +580,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
       dims[n.id] = { w, h, type: n.type };
     });
 
-    // Build ordered child lists for each parent (include ghosts/dups; preserve order)
-    const parentToChildren: Record<string, string[]> = {};
-    Object.keys(outDir).forEach(parentId => {
-      const orderedChildren = outDir[parentId] || [];
-      const seen = new Set<string>();
-      const children: string[] = [];
-      for (const childId of orderedChildren) {
-        if (!seen.has(childId)) { children.push(childId); seen.add(childId); }
-      }
-      parentToChildren[parentId] = children;
-    });
-
-    // Helper: direct children only. Instances without edges are treated as childless.
-    const getChildrenFor = (nodeId: string): string[] => parentToChildren[nodeId] || [];
+    // Use cached children map for stacking
+    const parentToChildren: Record<string, string[]> = parentToChildrenRef.current;
 
     const anchorPoint = (id: string, side: 'left' | 'right') => {
       const p = posRef.current[id];
@@ -468,44 +599,153 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
       // reset targets each frame (only when debugging)
       if (DEBUG_SHOW_TARGETS) targetCentersRef.current = {};
 
-      // Precompute own and total (children-combined) heights for all nodes
-      const GAP = 12;
-      const ownHeightMap: Record<string, number> = {};
-      (graphNodes as any[]).forEach((n: any) => {
-        const fallbackH = n.type === 'ghost' ? 40 : 160;
-        ownHeightMap[n.id] = dims[n.id]?.h ?? fallbackH;
-      });
-      const totalHeightMap: Record<string, number> = {};
-      const visiting = new Set<string>();
-      const computeTotal = (nodeId: string): number => {
-        if (totalHeightMap[nodeId] !== undefined) return totalHeightMap[nodeId];
-        if (visiting.has(nodeId)) return ownHeightMap[nodeId];
-        visiting.add(nodeId);
-        const kids = getChildrenFor(nodeId) || [];
-        let total: number;
-        if (!kids || kids.length === 0) {
-          total = ownHeightMap[nodeId];
-        } else {
-          let sum = 0;
-          for (const kid of kids) sum += computeTotal(kid);
-          total = sum + GAP * Math.max(0, kids.length - 1);
-        }
-        visiting.delete(nodeId);
-        totalHeightMap[nodeId] = total;
-        return total;
-      };
-      (graphNodes as any[]).forEach((n: any) => { computeTotal(n.id); });
-      // Attach debug height data to nodes
-      (graphNodes as any[]).forEach((n: any) => {
-        n.data = {
-          ...(n.data || {}),
-          debugOwnHeight: ownHeightMap[n.id],
-          debugTotalHeight: totalHeightMap[n.id],
-          debugHeight: totalHeightMap[n.id],
-        };
-      });
+      // Totals are precomputed outside the frame; nothing to do here
 
       // compute and smooth toward target centers only
+      let frameMaxDelta = 0;
+
+      // Helper: compute the horizontal chain width from a node following
+      // consecutive single-child links, adding LINK_DISTANCE between nodes.
+      const computeChainWidth = (startId: string): number => {
+        let width = dims[startId]?.w ?? 0;
+        const visited = new Set<string>();
+        let current = startId;
+        while (!visited.has(current)) {
+          visited.add(current);
+          const kids = parentToChildren[current] || [];
+          if (kids.length !== 1) break;
+          const child = kids[0];
+          width += LINK_DISTANCE + (dims[child]?.w ?? 0);
+          current = child;
+        }
+        return width;
+      };
+      // Precompute per-parent child target Y positions using total subtree heights only
+      const parentChildTargetY: Record<string, Record<string, number>> = {};
+      const GAP_BETWEEN_SIBLINGS = 12;
+      const parents = Object.keys(parentToChildren);
+      for (const parentId of parents) {
+        const childList = parentToChildren[parentId] || [];
+        if (childList.length === 0) continue;
+        const parentPos = posRef.current[parentId];
+        const parentH = dims[parentId]?.h ?? 0;
+        if (!parentPos) continue;
+        const parentCenterY = parentPos.y + parentH / 2;
+
+        // Effective heights: always use TOTAL subtree heights for distribution
+        const effectiveHeights: number[] = childList.map(cid => (
+          totalHeightMapRef.current[cid] ?? (dims[cid]?.h ?? 0)
+        ));
+
+        // Total height and base per-child target centers using the effective slot height for centering
+        const totalHeight = effectiveHeights.reduce((a, b) => a + b, 0) + GAP_BETWEEN_SIBLINGS * Math.max(0, childList.length - 1);
+        const baseTargets: number[] = new Array(childList.length);
+        let before = 0;
+        for (let i = 0; i < childList.length; i++) {
+          const slotH = effectiveHeights[i];
+          baseTargets[i] = parentCenterY - totalHeight / 2 + before + slotH / 2;
+          before += effectiveHeights[i] + (i < childList.length - 1 ? GAP_BETWEEN_SIBLINGS : 0);
+        }
+
+        // Node-driven offsets (forward-only, additive)
+        const offsets: number[] = new Array(childList.length).fill(0);
+        for (let i = 0; i < childList.length - 1; i++) {
+          const curId = childList[i];
+          const nextIdx = i + 1;
+          const nextId = childList[nextIdx];
+          // Act if either current or next node has children (non-exclusive)
+          const nextKids = parentToChildren[nextId] || [];
+          const curKids = parentToChildren[curId] || [];
+          if (nextKids.length === 0 && curKids.length === 0) continue;
+
+          const curTotalW = totalWidthMapRef.current[curId] ?? computeChainWidth(curId);
+          const nextOwnW = ownWidthMapRef.current[nextId] ?? (dims[nextId]?.w ?? 0);
+
+          if (nextOwnW >= curTotalW) {
+            // Next can fit current's chain: move NEXT (and subsequent fitting nodes) up by its own overhang
+            const nextTotalH = totalHeightMapRef.current[nextId] ?? (dims[nextId]?.h ?? 0);
+            const nextOwnH = ownHeightMapRef.current[nextId] ?? (dims[nextId]?.h ?? 0);
+            const delta = 0.5 * Math.max(0, nextTotalH - nextOwnH);
+            if (delta > 0) {
+              const passing: number[] = [];
+              let failed = false;
+              for (let k = nextIdx; k < childList.length; k++) {
+                const kid = childList[k];
+                const kidOwnW = ownWidthMapRef.current[kid] ?? (dims[kid]?.w ?? 0);
+                if (kidOwnW >= curTotalW) {
+                  passing.push(k);
+                } else {
+                  failed = true;
+                  break;
+                }
+              }
+              const applied = failed ? (delta * 0.5) : delta;
+              for (const idx of passing) offsets[idx] -= applied;
+            }
+          } else {
+            // Reverse check: can CURRENT fit NEXT's chain?
+            const curOwnW = ownWidthMapRef.current[curId] ?? (dims[curId]?.w ?? 0);
+            const nextTotalW = totalWidthMapRef.current[nextId] ?? computeChainWidth(nextId);
+            if (curOwnW >= nextTotalW) {
+              const curTotalH = totalHeightMapRef.current[curId] ?? (dims[curId]?.h ?? 0);
+              const curOwnH = ownHeightMapRef.current[curId] ?? (dims[curId]?.h ?? 0);
+              const delta = 0.5 * Math.max(0, curTotalH - curOwnH);
+              if (delta > 0) {
+                const passing: number[] = [];
+                let failed = false;
+                for (let k = nextIdx; k < childList.length; k++) {
+                  const kid = childList[k];
+                  const kidTotalW = totalWidthMapRef.current[kid] ?? computeChainWidth(kid);
+                  if (curOwnW >= kidTotalW) {
+                    passing.push(k);
+                  } else {
+                    failed = true;
+                    break;
+                  }
+                }
+                const applied = failed ? (delta * 0.5) : delta;
+                for (const idx of passing) offsets[idx] -= applied;
+              }
+            }
+          }
+        }
+
+        // Compute adjusted group extent after offsets to keep centered on parent
+        let minTop = Infinity;
+        let maxBottom = -Infinity;
+        for (let i = 0; i < childList.length; i++) {
+          const center = baseTargets[i] + (offsets[i] || 0);
+          const slotH = effectiveHeights[i];
+          const top = center - slotH / 2;
+          const bottom = center + slotH / 2;
+          if (top < minTop) minTop = top;
+          if (bottom > maxBottom) maxBottom = bottom;
+        }
+        // Recompute group bounds using ONLY direct children's own heights for centering
+        minTop = Infinity;
+        maxBottom = -Infinity;
+        for (let i = 0; i < childList.length; i++) {
+          const cid = childList[i];
+          const center = baseTargets[i] + (offsets[i] || 0);
+          const ownH = ownHeightMapRef.current[cid] ?? (dims[cid]?.h ?? 0);
+          const top = center - ownH / 2;
+          const bottom = center + ownH / 2;
+          if (top < minTop) minTop = top;
+          if (bottom > maxBottom) maxBottom = bottom;
+        }
+        // Shift all children so their mid aligns with parentCenterY, based on own heights only
+        const groupCenter = (minTop + maxBottom) / 2;
+        const shiftY = parentCenterY - groupCenter;
+
+        // Apply offsets plus centering shift to base targets and materialize map
+        const targets: Record<string, number> = {};
+        for (let i = 0; i < childList.length; i++) {
+          const cid = childList[i];
+          targets[cid] = baseTargets[i] + (offsets[i] || 0) + shiftY;
+        }
+        parentChildTargetY[parentId] = targets;
+      }
+
       for (const n of graphNodes as Node[]) {
         const id = n.id;
         if (draggedIdsRef.current.has(id)) continue;
@@ -532,29 +772,13 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             const curCenterX = p.x + dw / 2;
             const curCenterY = p.y + dh / 2;
             const targetCenterX = xCount > 0 ? (desiredXSum / xCount) : cx;
-            // Compute target Y: for nodes with exactly one parent, stack within parent's children based on index and heights
+            // Compute target Y: for nodes with exactly one parent, use the parent's precomputed stacking plan
             let targetCenterY: number;
             if (incomers.length === 1) {
               const parentId = incomers[0];
-              const childList = parentToChildren[parentId] || [];
-              const idxInParent = childList.indexOf(id);
-              if (idxInParent >= 0 && childList.length > 0) {
-                const gap = 12;
-                const parentPos = posRef.current[parentId];
-                const parentH = dims[parentId]?.h ?? 0;
-                const parentCenterY = parentPos.y + parentH / 2;
-                // Use precomputed totals for children
-                const childHeights = childList.map((cid) => totalHeightMap[cid] ?? ownHeightMap[cid]);
-                const totalHeight = childHeights.reduce((a, b) => a + b, 0) + gap * Math.max(0, childList.length - 1);
-                let before = 0;
-                for (let i = 0; i < idxInParent; i++) {
-                  before += childHeights[i] + gap;
-                }
-                const thisH = totalHeightMap[id] ?? (dims[id]?.h ?? 0);
-                targetCenterY = parentCenterY - totalHeight / 2 + before + thisH / 2;
-              } else {
-                targetCenterY = yCount > 0 ? (desiredYSum / yCount) : cy;
-              }
+              const targets = parentChildTargetY[parentId];
+              if (targets && id in targets) targetCenterY = targets[id];
+              else targetCenterY = yCount > 0 ? (desiredYSum / yCount) : cy;
             } else {
               // Multi-parent or none: fall back to average of parents
               targetCenterY = yCount > 0 ? (desiredYSum / yCount) : cy;
@@ -563,7 +787,10 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             if (DEBUG_SHOW_TARGETS) targetCentersRef.current[id] = { x: targetCenterX, y: targetCenterY };
             const nx = curCenterX + (targetCenterX - curCenterX) * smoothingAlpha;
             const ny = curCenterY + (targetCenterY - curCenterY) * smoothingAlpha;
-            posRef.current[id] = { x: nx - dw / 2, y: ny - dh / 2 };
+            const newX = nx - dw / 2;
+            const newY = ny - dh / 2;
+            frameMaxDelta = Math.max(frameMaxDelta, Math.abs(newX - p.x), Math.abs(newY - p.y));
+            posRef.current[id] = { x: newX, y: newY };
           } else {
             // roots gently drift toward center
             const dw = dims[id]?.w ?? 0;
@@ -579,7 +806,10 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             }
             const nx = curCenterX + (cx - curCenterX) * smoothingAlpha * 0.5;
             const ny = curCenterY + (cy - curCenterY) * smoothingAlpha * 0.5;
-            posRef.current[id] = { x: nx - dw / 2, y: ny - dh / 2 };
+            const newX = nx - dw / 2;
+            const newY = ny - dh / 2;
+            frameMaxDelta = Math.max(frameMaxDelta, Math.abs(newX - p.x), Math.abs(newY - p.y));
+            posRef.current[id] = { x: newX, y: newY };
           }
         }
         // end per-node processing
@@ -591,13 +821,20 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         return { ...n, position: { x: target.x, y: target.y } };
       }));
 
+      // Stop animating when stable for a period; restart on any interaction/param change
+      const isIdle = frameMaxDelta < 0.05 && !totalsDirtyRef.current && draggedIdsRef.current.size === 0;
+      if (isIdle) idleFramesRef.current += 1; else idleFramesRef.current = 0;
+      if (idleFramesRef.current > 30) {
+        animFrameRef.current = null;
+        return;
+      }
       animFrameRef.current = requestAnimationFrame(step);
     };
 
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     animFrameRef.current = requestAnimationFrame(step);
     return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; };
-  }, [graphNodes, edges, setGraphNodes, linkDistance, smoothingAlpha, worldCenter]);
+  }, [graphNodes, edges, setGraphNodes, linkDistance, smoothingAlpha, worldCenter, simTick]);
 
   // Restart relaxation after a drag completes; provide smaller runs during drag
   const handleNodeDragStart = useCallback((_e: any, node: Node) => {
@@ -614,24 +851,57 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   const handleNodeDragStop = useCallback((_e: any, node: Node) => {
     draggedIdsRef.current.delete(node.id);
     posRef.current[node.id] = { x: node.position.x, y: node.position.y };
+    // kick the simulator to settle after a drag
+    setSimTick(v => v + 1);
   }, []);
 
   const displayNodes = useMemo(() => {
     if (!graphNodes) return [] as any[];
+    // Build local dims for width calculations
+    const dimsLocal: Record<string, { w: number; h: number; type?: string }> = {};
+    (graphNodes as any[]).forEach((n: any) => {
+      const fallbackW = n.type === 'ghost' ? 140 : 520;
+      const fallbackH = n.type === 'ghost' ? 40 : 160;
+      const w = (n as any).width ?? fallbackW;
+      const h = (n as any).height ?? fallbackH;
+      dimsLocal[n.id] = { w, h, type: n.type };
+    });
+    const mapping = parentToChildrenRef.current;
+    const computeChainWidthDisplay = (startId: string): number => {
+      // Use cached total width if available for consistency with layout math
+      const cached = totalWidthMapRef.current[startId];
+      if (typeof cached === 'number') return cached;
+      let width = dimsLocal[startId]?.w ?? 0;
+      const visited = new Set<string>();
+      let current = startId;
+      while (!visited.has(current)) {
+        visited.add(current);
+        const kids = mapping[current] || [];
+        if (kids.length !== 1) break;
+        const child = kids[0];
+        width += linkDistance + (dimsLocal[child]?.w ?? 0);
+        current = child;
+      }
+      return width;
+    };
+
     return (graphNodes as any[]).map(n => {
       const logicalSceneId = (n as any).data?.id as string | undefined;
       const isHovered = !!logicalSceneId && hoveredSceneId === logicalSceneId;
       const dimsH = (n as any).height ?? (n.type === 'ghost' ? 40 : 160);
-      // attach a debugHeight read from last known dims; child-combined value is set during step when available
-      const currentDebugHeight = (n.data as any)?.debugHeight ?? dimsH;
+      // read cached totals for debug overlay (throttled via debugVersion)
+      const ownH = ownHeightMapRef.current[n.id] ?? dimsH;
+      const totalH = totalHeightMapRef.current[n.id] ?? ownH;
+      const ownW = dimsLocal[n.id]?.w ?? (n.type === 'ghost' ? 140 : 520);
+      const totalW = computeChainWidthDisplay(n.id);
       return {
         ...n,
-        data: { ...(n.data || {}), isHovered, debugHeight: currentDebugHeight, debugOwnHeight: dimsH, debugTotalHeight: (n.data as any)?.debugHeight ?? currentDebugHeight },
+        data: { ...(n.data || {}), isHovered, debugHeight: totalH, debugOwnHeight: ownH, debugTotalHeight: totalH, debugOwnWidth: ownW, debugTotalWidth: totalW },
         // slight wrapper elevation as a fallback (main styling handled inside node components)
         style: isHovered ? { ...(n.style || {}), zIndex: 2 } : n.style,
       };
     });
-  }, [graphNodes, hoveredSceneId]);
+  }, [graphNodes, hoveredSceneId, debugVersion]);
 
   if (!graph || graphNodes.length === 0) {
     return (
@@ -673,6 +943,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
           }}
           nodeTypes={nodeTypes}
           fitView
+            minZoom={0.1}
           nodesDraggable
           style={{ backgroundColor: '#1e1e1e' }}
           onMove={(_evt, viewport) => {
