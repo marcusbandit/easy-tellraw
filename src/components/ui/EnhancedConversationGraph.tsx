@@ -174,7 +174,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   const lastDebugUpdateRef = useRef<number>(0);
   const [debugVersion, setDebugVersion] = useState(0);
   // Physics parameters (tunable)
-  const [linkDistance, setLinkDistance] = useState(120);
+  // Link distance is now computed dynamically per parent; keep only smoothing
   const [smoothingAlpha, setSmoothingAlpha] = useState(0.1);
   const [simTick, setSimTick] = useState(0);
 
@@ -499,7 +499,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
           total = ownW[id] ?? 0;
         } else if (kids.length === 1) {
           const child = kids[0];
-          total = (ownW[id] ?? 0) + linkDistance + computeW(child);
+          const link = Math.max(120, (own[id] ?? 0) * 0.25);
+          total = (ownW[id] ?? 0) + link + computeW(child);
         } else {
           // For branching, take the max width among children chains side-by-side
           let maxChild = 0;
@@ -507,7 +508,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             const w = computeW(k);
             if (w > maxChild) maxChild = w;
           }
-          total = (ownW[id] ?? 0) + linkDistance + maxChild;
+          const link = Math.max(120, (own[id] ?? 0) * 0.25);
+          total = (ownW[id] ?? 0) + link + maxChild;
         }
         visitingW.delete(id);
         totalsW[id] = total;
@@ -551,7 +553,197 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   // Deterministic parent-alignment simulator (smoothing toward computed targets)
   useEffect(() => {
     if (graphNodes.length === 0) return;
-    const LINK_DISTANCE = linkDistance;
+    // Helper: compute combined height span of a node's immediate children using the same
+    // stacking/offset rules (without re-centering), measured using own heights after offsets
+    const computeImmediateChildrenCombinedExtent = (parentIdLocal: string): number => {
+      const localChildren = parentToChildren[parentIdLocal] || [];
+      if (localChildren.length === 0) return 0;
+      const GAP = 12;
+      const effectiveHeightsLocal: number[] = localChildren.map(cid => (
+        totalHeightMapRef.current[cid] ?? (dims[cid]?.h ?? 0)
+      ));
+      const baseTargetsLocal: number[] = new Array(localChildren.length);
+      let beforeLocal = 0;
+      const totalHLocal = effectiveHeightsLocal.reduce((a, b) => a + b, 0) + GAP * Math.max(0, localChildren.length - 1);
+      for (let i = 0; i < localChildren.length; i++) {
+        const slotH = effectiveHeightsLocal[i];
+        baseTargetsLocal[i] = -totalHLocal / 2 + beforeLocal + slotH / 2;
+        beforeLocal += effectiveHeightsLocal[i] + (i < localChildren.length - 1 ? GAP : 0);
+      }
+      const offsetsLocal: number[] = new Array(localChildren.length).fill(0);
+      for (let i = 0; i < localChildren.length - 1; i++) {
+        const curIdLocal = localChildren[i];
+        const nextIdxLocal = i + 1;
+        const nextIdLocal = localChildren[nextIdxLocal];
+        const nextKidsLocal = parentToChildren[nextIdLocal] || [];
+        const curKidsLocal = parentToChildren[curIdLocal] || [];
+        if (nextKidsLocal.length === 0 && curKidsLocal.length === 0) continue;
+        const curTotalWLocal = totalWidthMapRef.current[curIdLocal] ?? (() => {
+          let width = dims[curIdLocal]?.w ?? 0;
+          const visitedL = new Set<string>();
+          let currentL = curIdLocal;
+          while (!visitedL.has(currentL)) {
+            visitedL.add(currentL);
+            const kidsL = parentToChildren[currentL] || [];
+            if (kidsL.length !== 1) break;
+            const childL = kidsL[0];
+            const linkL = computeLinkDistanceForParent(currentL);
+            width += linkL + (dims[childL]?.w ?? 0);
+            currentL = childL;
+          }
+          return width;
+        })();
+        const nextOwnWLocal = ownWidthMapRef.current[nextIdLocal] ?? (dims[nextIdLocal]?.w ?? 0);
+        if (nextOwnWLocal >= curTotalWLocal) {
+          const nextTotalHLocal = totalHeightMapRef.current[nextIdLocal] ?? (dims[nextIdLocal]?.h ?? 0);
+          const nextOwnHLocal = ownHeightMapRef.current[nextIdLocal] ?? (dims[nextIdLocal]?.h ?? 0);
+          const deltaLocal = 0.5 * Math.max(0, nextTotalHLocal - nextOwnHLocal);
+          if (deltaLocal > 0) {
+            const passingIdx: number[] = [];
+            let failedLocal = false;
+            for (let k = nextIdxLocal; k < localChildren.length; k++) {
+              const kid = localChildren[k];
+              const kidOwnW = ownWidthMapRef.current[kid] ?? (dims[kid]?.w ?? 0);
+              const kidHasChildren = (parentToChildren[kid] || []).length > 0;
+              if (!kidHasChildren || kidOwnW >= curTotalWLocal) passingIdx.push(k); else { failedLocal = true; break; }
+            }
+            const appliedLocal = failedLocal ? (deltaLocal) : deltaLocal;
+            for (const idx of passingIdx) offsetsLocal[idx] -= appliedLocal;
+            if (failedLocal && passingIdx.length > 0) {
+              const failIdx = nextIdxLocal + passingIdx.length;
+              let combinedLocal = 0;
+              for (let t = 0; t < passingIdx.length - 1; t++) combinedLocal += effectiveHeightsLocal[passingIdx[t]];
+              combinedLocal += GAP * Math.max(0, passingIdx.length - 1);
+              for (let j = failIdx; j < localChildren.length; j++) offsetsLocal[j] -= combinedLocal;
+            }
+          }
+        } else {
+          const curOwnWLocal = ownWidthMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.w ?? 0);
+          const nextTotalWLocal = totalWidthMapRef.current[nextIdLocal] ?? (() => {
+            let width = dims[nextIdLocal]?.w ?? 0;
+            const visitedL = new Set<string>();
+            let currentL = nextIdLocal;
+            while (!visitedL.has(currentL)) {
+              visitedL.add(currentL);
+              const kidsL = parentToChildren[currentL] || [];
+              if (kidsL.length !== 1) break;
+              const childL = kidsL[0];
+              const linkL = computeLinkDistanceForParent(currentL);
+              width += linkL + (dims[childL]?.w ?? 0);
+              currentL = childL;
+            }
+            return width;
+          })();
+          if (curOwnWLocal >= nextTotalWLocal) {
+            const curTotalHLocal = totalHeightMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.h ?? 0);
+            const curOwnHLocal = ownHeightMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.h ?? 0);
+            const deltaLocal = 0.5 * Math.max(0, curTotalHLocal - curOwnHLocal);
+            if (deltaLocal > 0) {
+              const passingIdx: number[] = [];
+              let failedLocal = false;
+              for (let k = nextIdxLocal; k < localChildren.length; k++) {
+                const kid = localChildren[k];
+                const kidTotalW = totalWidthMapRef.current[kid] ?? (() => {
+                  let width = dims[kid]?.w ?? 0;
+                  const visitedL = new Set<string>();
+                  let currentL = kid;
+                  while (!visitedL.has(currentL)) {
+                    visitedL.add(currentL);
+                    const kidsL = parentToChildren[currentL] || [];
+                    if (kidsL.length !== 1) break;
+                    const childL = kidsL[0];
+                    const linkL = computeLinkDistanceForParent(currentL);
+                    width += linkL + (dims[childL]?.w ?? 0);
+                    currentL = childL;
+                  }
+                  return width;
+                })();
+                const kidHasChildren = (parentToChildren[kid] || []).length > 0;
+                if (!kidHasChildren || curOwnWLocal >= kidTotalW) passingIdx.push(k); else { failedLocal = true; break; }
+              }
+              const appliedLocal = failedLocal ? (deltaLocal) : deltaLocal;
+              for (const idx of passingIdx) offsetsLocal[idx] -= appliedLocal;
+              if (failedLocal && passingIdx.length > 0) {
+                const failIdx = nextIdxLocal + passingIdx.length;
+                let combinedLocal = 0;
+                for (let t = 0; t < passingIdx.length - 1; t++) combinedLocal += effectiveHeightsLocal[passingIdx[t]];
+                combinedLocal += GAP * Math.max(0, passingIdx.length - 1);
+                for (let j = failIdx; j < localChildren.length; j++) offsetsLocal[j] -= combinedLocal;
+              }
+            }
+          } else {
+            const curChildrenLocal = parentToChildren[curIdLocal] || [];
+            let maxChildOwnWLocal = 0;
+            for (const ch of curChildrenLocal) {
+              const w = ownWidthMapRef.current[ch] ?? (dims[ch]?.w ?? 0);
+              if (w > maxChildOwnWLocal) maxChildOwnWLocal = w;
+            }
+            const extendedCapacityLocal = curOwnWLocal + computeLinkDistanceForParent(curIdLocal) + maxChildOwnWLocal;
+            if (extendedCapacityLocal >= nextTotalWLocal) {
+              // delta based on current's children combined height
+              let combinedChildrenHLocal = 0;
+              if (curChildrenLocal.length > 0) {
+                // sum totals + gaps
+                for (const ch of curChildrenLocal) combinedChildrenHLocal += (totalHeightMapRef.current[ch] ?? (dims[ch]?.h ?? 0));
+                combinedChildrenHLocal += GAP * Math.max(0, curChildrenLocal.length - 1);
+              }
+              const curTotalHLocal = totalHeightMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.h ?? 0);
+              const deltaLocal = 0.5 * Math.max(0, curTotalHLocal - combinedChildrenHLocal);
+              if (deltaLocal > 0) {
+                const passingIdx: number[] = [];
+                let failedLocal = false;
+                for (let k = nextIdxLocal; k < localChildren.length; k++) {
+                  const kid = localChildren[k];
+                  const kidTotalW = totalWidthMapRef.current[kid] ?? (() => {
+                    let width = dims[kid]?.w ?? 0;
+                    const visitedL = new Set<string>();
+                    let currentL = kid;
+                    while (!visitedL.has(currentL)) {
+                      visitedL.add(currentL);
+                      const kidsL = parentToChildren[currentL] || [];
+                      if (kidsL.length !== 1) break;
+                      const childL = kidsL[0];
+                      const linkL = computeLinkDistanceForParent(currentL);
+                      width += linkL + (dims[childL]?.w ?? 0);
+                      currentL = childL;
+                    }
+                    return width;
+                  })();
+                  const kidHasChildren = (parentToChildren[kid] || []).length > 0;
+                  if (!kidHasChildren || extendedCapacityLocal >= kidTotalW) passingIdx.push(k); else { failedLocal = true; break; }
+                }
+                for (const idx of passingIdx) offsetsLocal[idx] -= deltaLocal;
+                if (failedLocal && passingIdx.length > 0) {
+                  const failIdx = nextIdxLocal + passingIdx.length;
+                  let combinedLocal = 0;
+                  for (let t = 0; t < passingIdx.length - 1; t++) combinedLocal += effectiveHeightsLocal[passingIdx[t]];
+                  combinedLocal += GAP * Math.max(0, passingIdx.length - 1);
+                  for (let j = failIdx; j < localChildren.length; j++) offsetsLocal[j] -= combinedLocal;
+                }
+              }
+            }
+          }
+        }
+      }
+      // compute span using own heights with offsets
+      let minTopLocal = Infinity, maxBottomLocal = -Infinity;
+      for (let i = 0; i < localChildren.length; i++) {
+        const cid = localChildren[i];
+        const center = baseTargetsLocal[i] + (offsetsLocal[i] || 0);
+        const ownH = ownHeightMapRef.current[cid] ?? (dims[cid]?.h ?? 0);
+        const top = center - ownH / 2;
+        const bottom = center + ownH / 2;
+        if (top < minTopLocal) minTopLocal = top;
+        if (bottom > maxBottomLocal) maxBottomLocal = bottom;
+      }
+      return Math.max(0, maxBottomLocal - minTopLocal);
+    };
+
+    // Per-parent dynamic link distance helper
+    const computeLinkDistanceForParent = (parentIdLocal: string): number => {
+      const extent = computeImmediateChildrenCombinedExtent(parentIdLocal);
+      return Math.max(120, extent * 0.25);
+    };
 
     // Directed graph for alignment
     const outDir: Record<string, string[]> = {};
@@ -621,7 +813,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
           const kids = parentToChildren[current] || [];
           if (kids.length !== 1) break;
           const child = kids[0];
-          width += LINK_DISTANCE + (dims[child]?.w ?? 0);
+          const link = computeLinkDistanceForParent(current);
+          width += link + (dims[child]?.w ?? 0);
           current = child;
         }
         return width;
@@ -636,7 +829,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
           const cap = computeRecursiveOwnCapacity(k);
           if (cap > maxChildCap) maxChildCap = cap;
         }
-        return ownW + LINK_DISTANCE + maxChildCap;
+        const link = computeLinkDistanceForParent(id);
+        return ownW + link + maxChildCap;
       };
       // Helper: compute combined height span of a node's immediate children using the same
       // stacking/offset rules (without re-centering), measured using own heights after offsets
@@ -689,7 +883,21 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             }
           } else {
             const curOwnWLocal = ownWidthMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.w ?? 0);
-            const nextTotalWLocal = totalWidthMapRef.current[nextIdLocal] ?? computeChainWidth(nextIdLocal);
+            const nextTotalWLocal = totalWidthMapRef.current[nextIdLocal] ?? (() => {
+              let width = dims[nextIdLocal]?.w ?? 0;
+              const visitedL = new Set<string>();
+              let currentL = nextIdLocal;
+              while (!visitedL.has(currentL)) {
+                visitedL.add(currentL);
+                const kidsL = parentToChildren[currentL] || [];
+                if (kidsL.length !== 1) break;
+                const childL = kidsL[0];
+                const linkL = computeLinkDistanceForParent(currentL);
+                width += linkL + (dims[childL]?.w ?? 0);
+                currentL = childL;
+              }
+              return width;
+            })();
             if (curOwnWLocal >= nextTotalWLocal) {
               const curTotalHLocal = totalHeightMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.h ?? 0);
               const curOwnHLocal = ownHeightMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.h ?? 0);
@@ -719,7 +927,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
                 const w = ownWidthMapRef.current[ch] ?? (dims[ch]?.w ?? 0);
                 if (w > maxChildOwnWLocal) maxChildOwnWLocal = w;
               }
-              const extendedCapacityLocal = curOwnWLocal + LINK_DISTANCE + maxChildOwnWLocal;
+              const extendedCapacityLocal = curOwnWLocal + computeLinkDistanceForParent(curIdLocal) + maxChildOwnWLocal;
               if (extendedCapacityLocal >= nextTotalWLocal) {
                 // delta based on current's children combined height
                 // compute combined height of curIdLocal's immediate children (recursively not needed here)
@@ -736,7 +944,21 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
                   let failedLocal = false;
                   for (let k = nextIdxLocal; k < localChildren.length; k++) {
                     const kid = localChildren[k];
-                    const kidTotalW = totalWidthMapRef.current[k] ?? computeChainWidth(kid);
+                  const kidTotalW = totalWidthMapRef.current[k] ?? (() => {
+                    let width = dims[kid]?.w ?? 0;
+                    const visitedL = new Set<string>();
+                    let currentL = kid;
+                    while (!visitedL.has(currentL)) {
+                      visitedL.add(currentL);
+                      const kidsL = parentToChildren[currentL] || [];
+                      if (kidsL.length !== 1) break;
+                      const childL = kidsL[0];
+                      const linkL = computeLinkDistanceForParent(currentL);
+                      width += linkL + (dims[childL]?.w ?? 0);
+                      currentL = childL;
+                    }
+                    return width;
+                  })();
                     if (extendedCapacityLocal >= kidTotalW) passingIdx.push(k); else { failedLocal = true; break; }
                   }
                   for (const idx of passingIdx) offsetsLocal[idx] -= deltaLocal;
@@ -974,7 +1196,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             const tw = dims[id]?.w ?? 0;
             if (!sp) continue;
             const srcCenterX = sp.x + sw / 2;
-            const tgtDesiredCenterX = srcCenterX + sw / 2 + tw / 2 + LINK_DISTANCE;
+            const linkForSrc = computeLinkDistanceForParent(srcId);
+            const tgtDesiredCenterX = srcCenterX + sw / 2 + tw / 2 + linkForSrc;
             desiredXSum += tgtDesiredCenterX; xCount++;
             const sh = dims[srcId]?.h ?? 0;
             desiredYSum += sp.y + sh / 2; yCount++;
@@ -1047,7 +1270,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     animFrameRef.current = requestAnimationFrame(step);
     return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; };
-  }, [graphNodes, edges, setGraphNodes, linkDistance, smoothingAlpha, worldCenter, simTick]);
+  }, [graphNodes, edges, setGraphNodes, smoothingAlpha, worldCenter, simTick]);
 
   // Restart relaxation after a drag completes; provide smaller runs during drag
   const handleNodeDragStart = useCallback((_e: any, node: Node) => {
@@ -1092,7 +1315,18 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         const kids = mapping[current] || [];
         if (kids.length !== 1) break;
         const child = kids[0];
-        width += linkDistance + (dimsLocal[child]?.w ?? 0);
+        // Mirror dynamic link distance roughly for display using parent's children extent
+        const childExtent = ((): number => {
+          const kidsLocal = mapping[current] || [];
+          if (kidsLocal.length === 0) return 0;
+          // approximate using cached totals
+          let sum = 0;
+          for (const k of kidsLocal) sum += (totalHeightMapRef.current[k] ?? (dimsLocal[k]?.h ?? 0));
+          sum += 12 * Math.max(0, kidsLocal.length - 1);
+          return sum;
+        })();
+        const link = Math.max(120, childExtent * 0.25);
+        width += link + (dimsLocal[child]?.w ?? 0);
         current = child;
       }
       return width;
@@ -1130,16 +1364,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
       {/* Physics control panel */}
-      <div style={{ position: 'absolute', right: 12, top: 12, zIndex: 10, background: 'rgba(20,20,20,0.9)', border: '1px solid #444', borderRadius: 8, padding: 12, width: 360 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Physics</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center' }}>
-          <label>Link distance</label><span>{linkDistance}</span>
-          <input type="range" min={50} max={400} step={10} value={linkDistance} onChange={e => setLinkDistance(parseInt(e.target.value))} />
-
-          <label>Smoothing</label><span>{smoothingAlpha.toFixed(2)}</span>
-          <input type="range" min={0.05} max={0.6} step={0.01} value={smoothingAlpha} onChange={e => setSmoothingAlpha(parseFloat(e.target.value))} />
-        </div>
-      </div>
+      {/* Controls removed (no sliders). Smoothing and link distance are managed in code. */}
       <ReactFlowProvider>
         <ReactFlow
           nodes={displayNodes as any}
