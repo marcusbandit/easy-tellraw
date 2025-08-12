@@ -23,7 +23,7 @@ interface EditorContainerProps {
   onCopy: () => void;
   target: string;
   setTarget: (value: string) => void;
-  onImportDialogue: (graph: DialogueGraph) => void;
+  onImportDialogue: (graph: DialogueGraph, opts?: { autoSwitch?: boolean }) => void;
 }
 
 const EditorContainer: React.FC<EditorContainerProps> = ({
@@ -100,12 +100,12 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
   }, [importInput]);
 
   // Helper: Load dialogue from a filesystem path, cache path, and start watching
-  const loadDialogueFromPath = useCallback(async (filePath: string, persist: boolean) => {
+  const loadDialogueFromPath = useCallback(async (filePath: string, persist: boolean, autoSwitch: boolean) => {
     if (!ipcRenderer) return;
     try {
       const text: string = await ipcRenderer.invoke('read-file', filePath);
       const graph = parseDialogue(text);
-      onImportDialogue(graph);
+      onImportDialogue(graph, { autoSwitch });
       if (persist) {
         try { window.localStorage.setItem('lastDialogueFilePath', filePath); } catch {}
       }
@@ -122,12 +122,12 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
     if (!ipcRenderer) return;
     const lastPath = window.localStorage.getItem('lastDialogueFilePath');
     if (lastPath) {
-      loadDialogueFromPath(lastPath, false);
+      loadDialogueFromPath(lastPath, false, false);
     }
     // Listen for change events from main to hot-reload
     const onChanged = (_event: any, payload: { path: string; eventType: string }) => {
       if (payload?.path && payload.path === watchedFilePath) {
-        loadDialogueFromPath(payload.path, false);
+        loadDialogueFromPath(payload.path, false, false);
       }
     };
     const onError = (_event: any, payload: { path: string; message: string }) => {
@@ -155,7 +155,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
       filters: [{ name: 'Dialogue Text', extensions: ['txt'] }]
     });
     if (!result?.canceled && result.filePaths && result.filePaths[0]) {
-      await loadDialogueFromPath(result.filePaths[0], true);
+      await loadDialogueFromPath(result.filePaths[0], true, true);
     }
   };
 
@@ -164,6 +164,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
       <Card size="2" variant="surface" style={{ padding: '16px', width: '100%' }}>
         <Box style={{ color: 'var(--gray-a12)' }}>
           <Heading size="5" mb="4">Minecraft Tellraw Editor</Heading>
+          {/* Global import toolbar moved to App.tsx */}
           <Box style={{ backgroundColor: '#1e1e1e', border: '1px solid #333', padding: '12px', borderRadius: '4px', marginBottom: '16px', minHeight: '200px' }}>
             <Editable
               spellCheck={false}
@@ -316,32 +317,14 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
             target={target}
             onTargetChange={setTarget}
           />
-          <Flex justify="end" gap="2" mt="4">
-            {/* Hidden file input for dialogue import */}
-            <input
-              ref={dialogueFileInputRef}
-              type="file"
-              accept=".txt"
-              style={{ display: 'none' }}
-              onChange={async (e) => {
-                const file = e.target.files && e.target.files[0];
-                if (!file) return;
-                try {
-                  const text = await file.text();
-                  const graph = parseDialogue(text);
-                  onImportDialogue(graph);
-                } catch (err: any) {
-                  alert('Failed to import dialogue: ' + (err?.message || String(err)));
-                } finally {
-                  // reset input so selecting the same file again still triggers change
-                  if (dialogueFileInputRef.current) dialogueFileInputRef.current.value = '';
-                }
-              }}
-            />
-            <Button variant="surface" size="2" onClick={handleOpenDialogueFile}>Import Dialogue (.txt)</Button>
+          <Flex justify="between" align="center" gap="2" mt="4">
+            <div>
+              <Button variant="outline" color="red" size="2" onClick={onReset}>Reset Tellraw</Button>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Dialog.Root>
               <Dialog.Trigger>
-                <Button variant="surface" size="2">Import</Button>
+                <Button variant="surface" size="2">Import Tellraw Command</Button>
               </Dialog.Trigger>
               <Dialog.Content width="80vw" maxWidth="none">
                 <Dialog.Title>Import Tellraw Command</Dialog.Title>
@@ -402,8 +385,8 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
                 </Flex>
               </Dialog.Content>
             </Dialog.Root>
-            <Button variant="outline" color="red" size="2" onClick={onReset}>Reset</Button>
-            <Button variant="solid" size="2" onClick={onCopy}>Copy</Button>
+              <Button variant="solid" size="2" onClick={onCopy}>Copy Tellraw Command</Button>
+            </div>
           </Flex>
         </Box>
       </Card>

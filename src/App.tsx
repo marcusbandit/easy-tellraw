@@ -10,12 +10,13 @@ import GraphEditor from "./components/ui/GraphEditor";
 import ConversationGraph from "./components/ui/ConversationGraph";
 import EnhancedConversationGraph from "./components/ui/EnhancedConversationGraph";
 import { useTellrawSegments } from "./hooks/useTellrawSegments";
-import { Flex, Tabs, Box } from "@radix-ui/themes";
+import { Flex, Tabs, Box, Button } from "@radix-ui/themes";
 import { Slate, withReact } from "slate-react";
 import { withHistory } from "slate-history";
 import { Transforms } from "slate";
 import { flattenSlateFragmentToCharSegments, squashAdjacentSegments } from "./lib/segments";
 import { DialogueGraph } from "./types/dialogue";
+import { parseDialogue } from "./lib/dialogueParser";
 
 const App: React.FC = () => {
   // State for Slate content and remount key
@@ -49,6 +50,7 @@ const App: React.FC = () => {
   const [target, setTarget] = useState<string>('@p');
   const [activeTab, setActiveTab] = useState<'editor' | 'graph'>('editor');
   const [dialogueGraph, setDialogueGraph] = useState<DialogueGraph | null>(null);
+  const dialogueFileInputRef = useRef<HTMLInputElement | null>(null);
   // Track last opened tellraw JSON file path for caching and hot reload (optional future use)
   const [lastTellrawFilePath, setLastTellrawFilePath] = useState<string | null>(() => {
     try { return window.localStorage.getItem('lastTellrawFilePath'); } catch { return null; }
@@ -222,10 +224,40 @@ const App: React.FC = () => {
     navigator.clipboard.writeText(collapsed);
   };
 
-  const handleImportDialogue = (graph: DialogueGraph) => {
+  const handleImportDialogue = (graph: DialogueGraph, opts?: { autoSwitch?: boolean }) => {
     setDialogueGraph(graph);
-    setActiveTab('graph');
+    if (opts?.autoSwitch) {
+      setActiveTab('graph');
+    }
   };
+
+  // Open native file dialog for dialogue import (top-level toolbar)
+  const handleOpenDialogueFile = useCallback(async () => {
+    // Electron path
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+    if (ipcRenderer) {
+      const result = await ipcRenderer.invoke('open-file-dialog', {
+        filters: [{ name: 'Dialogue Text', extensions: ['txt'] }]
+      });
+      if (!result?.canceled && result.filePaths && result.filePaths[0]) {
+        const filePath = result.filePaths[0];
+        try {
+          const text: string = await ipcRenderer.invoke('read-file', filePath);
+          const graph = parseDialogue(text);
+          try { window.localStorage.setItem('lastDialogueFilePath', filePath); } catch {}
+          handleImportDialogue(graph, { autoSwitch: true });
+          // Optional: start watching in Electron main (EditorContainer handles change events when mounted)
+          try { ipcRenderer.send('watch-file', filePath); } catch {}
+        } catch (err: any) {
+          alert('Failed to open dialogue file: ' + (err?.message || String(err)));
+        }
+      }
+      return;
+    }
+    // Browser fallback
+    dialogueFileInputRef.current?.click();
+  }, []);
 
   // Import tellraw JSON or command string
   const importJson = (input: string) => {
@@ -336,6 +368,44 @@ const App: React.FC = () => {
             <Tabs.Trigger value="editor">Editor</Tabs.Trigger>
             <Tabs.Trigger value="graph">Graph</Tabs.Trigger>
           </Tabs.List>
+          {/* Global toolbar: Dialogue import below tab picker (lighter background) */}
+          <div
+            role="toolbar"
+            style={{
+              backgroundColor: 'var(--gray-a2)',
+              border: '1px solid var(--gray-a6)',
+              padding: '12px',
+              borderRadius: '6px',
+              marginTop: '12px',
+              marginBottom: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              gap: 8,
+            }}
+          >
+            {/* Hidden input for browser fallback */}
+            <input
+              ref={dialogueFileInputRef}
+              type="file"
+              accept=".txt"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const graph = parseDialogue(text);
+                  handleImportDialogue(graph, { autoSwitch: true });
+                } catch (err: any) {
+                  alert('Failed to import dialogue: ' + (err?.message || String(err)));
+                } finally {
+                  if (dialogueFileInputRef.current) dialogueFileInputRef.current.value = '';
+                }
+              }}
+            />
+            <Button variant="surface" size="2" onClick={handleOpenDialogueFile}>Import Dialogue (.txt)</Button>
+          </div>
           
           <Box pt="3" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             {activeTab === 'editor' && (

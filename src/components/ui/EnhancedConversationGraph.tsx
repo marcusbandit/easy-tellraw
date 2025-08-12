@@ -160,10 +160,46 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [worldCenter, setWorldCenter] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const targetCentersRef = useRef<Record<string, { x: number; y: number }>>({});
+  // Persistable map of latest desired target centers per node (pane coordinates)
+  const desiredTargetsRef = useRef<Record<string, { x: number; y: number }>>({});
   const transformRef = useRef<[number, number, number]>([0, 0, 1]);
   // Transform is tracked via onMove into transformRef to avoid requiring useStore
   // When hovering one instance of a scene, highlight all instances by tracking the logical scene id
   const [hoveredSceneId, setHoveredSceneId] = useState<string | null>(null);
+  // Persisted layout cache (positions + viewport)
+  const CACHE_KEY = 'EnhancedConversationGraph.layout.v1';
+  const [hasCachedLayout, setHasCachedLayout] = useState<boolean>(false);
+  const [initialViewport, setInitialViewport] = useState<{ x: number; y: number; zoom: number } | null>(null);
+  // Ensure simulation doesn't start until cache (if any) is applied
+  const [isLayoutHydrated, setIsLayoutHydrated] = useState<boolean>(false);
+  // Delay simulation start by 1s after entering graph view
+  const [isSimDelayElapsed, setIsSimDelayElapsed] = useState<boolean>(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setIsSimDelayElapsed(true), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const loadLayoutCache = useCallback((): { positions?: Record<string, { x: number; y: number }>; viewport?: { x: number; y: number; zoom: number }; targets?: Record<string, { x: number; y: number }> } | null => {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+      return null;
+    } catch (_e) {
+      return null;
+    }
+  }, []);
+
+  const saveLayoutCache = useCallback(() => {
+    try {
+      const [tx, ty, tz] = transformRef.current || [0, 0, 1];
+      const payload = { positions: posRef.current, viewport: { x: tx, y: ty, zoom: tz }, targets: desiredTargetsRef.current };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+    } catch (_e) {
+      // ignore
+    }
+  }, []);
   // Cached maps for performance
   const parentToChildrenRef = useRef<Record<string, string[]>>({});
   const ownHeightMapRef = useRef<Record<string, number>>({});
@@ -397,19 +433,43 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
 
   // Initialize / refresh when graph changes
   useEffect(() => {
-    setGraphNodes(layout.nodes as any);
+    const cache = loadLayoutCache();
+    const cachedPositions = cache?.positions || {};
+    const nextNodesInit = (layout.nodes as any[]).map((n: any) => {
+      const cached = cachedPositions[n.id];
+      if (cached && typeof cached.x === 'number' && typeof cached.y === 'number') {
+        return { ...n, position: { x: cached.x, y: cached.y } };
+      }
+      return n;
+    });
+    setGraphNodes(nextNodesInit as any);
     setEdges(layout.edges as any);
     // initialize physics state
     const nextPos: Record<string, { x: number; y: number }> = {};
     const nextVel: Record<string, { vx: number; vy: number }> = {};
-    layout.nodes.forEach((n: any) => {
+    (nextNodesInit as any[]).forEach((n: any) => {
       nextPos[n.id] = { x: n.position.x, y: n.position.y };
       nextVel[n.id] = { vx: 0, vy: 0 };
     });
     posRef.current = nextPos;
     velRef.current = nextVel;
     didSimulateRef.current = true; // disable old relaxer
-  }, [layout.nodes, layout.edges, setGraphNodes, setEdges]);
+    const vp = cache?.viewport;
+    if (vp && typeof vp.x === 'number' && typeof vp.y === 'number' && typeof vp.zoom === 'number') {
+      setHasCachedLayout(true);
+      setInitialViewport(vp);
+      transformRef.current = [vp.x, vp.y, vp.zoom];
+    } else {
+      setHasCachedLayout(false);
+      setInitialViewport(null);
+    }
+    // hydrate last known desired targets if present
+    if (cache?.targets && typeof cache.targets === 'object') {
+      desiredTargetsRef.current = cache.targets as Record<string, { x: number; y: number }>;
+    }
+    // Mark hydration complete so simulation can start
+    setIsLayoutHydrated(true);
+  }, [layout.nodes, layout.edges, setGraphNodes, setEdges, loadLayoutCache]);
 
   // Build parent->children mapping when nodes/edges change
   useEffect(() => {
@@ -553,6 +613,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   // Deterministic parent-alignment simulator (smoothing toward computed targets)
   useEffect(() => {
     if (graphNodes.length === 0) return;
+    // Defer simulation until hydrated (if cache exists) and 1s delay elapsed
+    if (!isLayoutHydrated || !isSimDelayElapsed) return;
     // Helper: compute combined height span of a node's immediate children using the same
     // stacking/offset rules (without re-centering), measured using own heights after offsets
     const computeImmediateChildrenCombinedExtent = (parentIdLocal: string): number => {
@@ -1219,7 +1281,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
               // Multi-parent or none: fall back to average of parents
               targetCenterY = yCount > 0 ? (desiredYSum / yCount) : cy;
             }
-            // store desired target center
+            // store desired target center (persisted)
+            desiredTargetsRef.current[id] = { x: targetCenterX, y: targetCenterY };
             if (DEBUG_SHOW_TARGETS) targetCentersRef.current[id] = { x: targetCenterX, y: targetCenterY };
             const nx = curCenterX + (targetCenterX - curCenterX) * smoothingAlpha;
             const ny = curCenterY + (targetCenterY - curCenterY) * smoothingAlpha;
@@ -1233,12 +1296,13 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             const dh = dims[id]?.h ?? 0;
             const curCenterX = p.x + dw / 2;
             const curCenterY = p.y + dh / 2;
-            // store desired target center for root as world center, converted to pane coordinates
+            // store desired target center for root as world center, converted to pane coordinates (persisted)
             if (DEBUG_SHOW_TARGETS) {
               const [tx, ty, tz] = transformRef.current || [0, 0, 1];
               const paneX = (cx - tx) / tz;
               const paneY = (cy - ty) / tz;
               targetCentersRef.current[id] = { x: paneX, y: paneY };
+              desiredTargetsRef.current[id] = { x: paneX, y: paneY };
             }
             const nx = curCenterX + (cx - curCenterX) * smoothingAlpha * 0.5;
             const ny = curCenterY + (cy - curCenterY) * smoothingAlpha * 0.5;
@@ -1289,6 +1353,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     posRef.current[node.id] = { x: node.position.x, y: node.position.y };
     // kick the simulator to settle after a drag
     setSimTick(v => v + 1);
+    saveLayoutCache();
   }, []);
 
   const displayNodes = useMemo(() => {
@@ -1362,7 +1427,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   }
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid #2b2b2b', boxShadow: '0 0 0 1px rgba(255,255,255,0.03) inset' }}>
       {/* Physics control panel */}
       {/* Controls removed (no sliders). Smoothing and link distance are managed in code. */}
       <ReactFlowProvider>
@@ -1380,17 +1445,24 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             setHoveredSceneId(prev => (prev === sceneId ? null : prev));
           }}
           nodeTypes={nodeTypes}
-          fitView
             minZoom={0.1}
           nodesDraggable
           style={{ backgroundColor: '#1e1e1e' }}
           onMove={(_evt, viewport) => {
             if (viewport) transformRef.current = [viewport.x, viewport.y, viewport.zoom];
+            saveLayoutCache();
+          }}
+          fitView={!hasCachedLayout}
+          defaultViewport={hasCachedLayout && initialViewport ? initialViewport : undefined}
+          proOptions={{ hideAttribution: true }}
+          onInit={(instance) => {
+            // hydrate any last targets into overlay if debug shows
+            if (DEBUG_SHOW_TARGETS) targetCentersRef.current = { ...desiredTargetsRef.current };
           }}
         >
           <Controls />
           <Background color="#333" gap={20} />
-          <MiniMap style={{ backgroundColor: '#2a2a2a' }} nodeColor="#666" maskColor="rgba(0, 0, 0, 0.5)" />
+          <MiniMap style={{ backgroundColor: '#2a2a2a', borderRadius: 8, overflow: 'hidden' }} nodeColor="#666" maskColor="rgba(0, 0, 0, 0.5)" />
           {/* Overlay: target centers as red X markers (debug only, not influenced by physics) */}
           {DEBUG_SHOW_TARGETS && (
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
