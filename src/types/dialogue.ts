@@ -30,6 +30,7 @@ export interface ButtonStyle {
 export interface DialogueStyles {
   speakers: Record<string, SpeakerStyle>;
   buttons: Record<string, ButtonStyle>;
+  styles?: Record<string, CharacterSubStyle>; // named styles: style.<name>
 }
 
 export interface DialogueChoice {

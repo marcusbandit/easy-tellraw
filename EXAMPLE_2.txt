@@ -1,17 +1,15 @@
 @styles
-character.1 name=Jordan name_color=#b6a02F text_color=#56C0FF text_bold=true
-character.2 name=Kara name_color=#B04A7A text_color=#FF6BAA
-character.3 name=Guard name_color=#8C8C8C text_color=#D0D0D0
-character.4 name=Merchant name_color=#BFA040 text_color=#FFD580
-character.5 name=Elder name_color=#5FCF7F text_color=#A0FF9F
-character.6 name=Thief name_color=#B02F2F text_color=#FF4F4F
-character.7 name=Narrator name_color=#888888 text_color=#AAAAAA
-
-button.1 label=default color=#333333
-button.2 label=primary color=#2D6CDF
-button.3 label=danger color=#B00020
-button.4 label=success color=#28A745
-button.5 label=warning color=#FFC107
+style.normal color=#f70000
+character.Jordan name_color=#b6a02F text_color=#56C0FF text_bold=true
+character.Kara name_color=#B04A7A text_color=#FF6BAA
+character.Guard name_color=#8C8C8C text_color=#D0D0D0
+character.Merchant name_color=#BFA040 text_color=#FFD580
+character.Elder name_color=#5FCF7F text_color=#A0FF9F
+character.Thief name_color=#B02F2F text_color=#FF4F4F
+character.Narrator name_color=#888888 text_color=#AAAAAA
+button.yes color=#2D6CDF
+button.no color=#B00020
+button.maybe style=normal
 @endstyles
 
 @start

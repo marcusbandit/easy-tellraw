@@ -266,6 +266,19 @@ const App: React.FC = () => {
   // Serialize current styles block in the new RAW format shown by the user
   const serializeStylesToRaw = (styles: DialogueGraph['styles']): string => {
     const lines: string[] = [];
+    // Named styles first (style.<name>)
+    const named = (styles as any).styles || {};
+    Object.entries(named).forEach(([key, st]: any) => {
+      const parts: string[] = [];
+      parts.push(`style.${key}`);
+      if (st?.color) parts.push(`color=${st.color}`);
+      if (st?.bold) parts.push(`bold=true`);
+      if (st?.italic) parts.push(`italic=true`);
+      if (st?.underline) parts.push(`underline=true`);
+      if (st?.strikethrough) parts.push(`strikethrough=true`);
+      lines.push(parts.join(' '));
+    });
+    if (Object.keys(named).length > 0) lines.push('');
     // Characters
     const speakerEntries = Object.entries(styles?.speakers || {});
     speakerEntries.forEach(([name, style], idx) => {
@@ -312,23 +325,27 @@ const App: React.FC = () => {
   };
 
   // Persist styles back into the raw dialogue file by replacing all character.X / button.X lines
-  const writeStylesToRawFile = async (styles: DialogueGraph['styles']) => {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
-      if (!ipcRenderer) return;
-      const path = window.localStorage.getItem('lastDialogueFilePath');
-      if (!path) return;
-      const content: string = await ipcRenderer.invoke('read-file', path);
-      const lines = content.split(/\r?\n/);
-      const remaining = lines.filter(l => !/^\s*(character|button)\.\d+\s+/i.test(l.trim()));
-      const stylesBlock = serializeStylesToRaw(styles);
-      const newText = [stylesBlock, '', ...remaining].join('\n');
-      await ipcRenderer.invoke('write-file', path, newText);
-    } catch (err) {
-      console.warn('Failed to write styles to raw file:', err);
-    }
-  };
+  const applyStylesFragmentToRaw = useCallback((stylesFragment: string) => {
+    setDialogueSource(prev => {
+      const lines = prev.split(/\r?\n/);
+      const startIdx = lines.findIndex(l => /^@styles\s*$/i.test(l.trim()));
+      let endIdx = -1;
+      if (startIdx >= 0) {
+        for (let i = startIdx + 1; i < lines.length; i++) {
+          if (/^@endstyles\s*$/i.test(lines[i].trim())) { endIdx = i; break; }
+        }
+      }
+      const fragmentLines = stylesFragment ? stylesFragment.split(/\r?\n/) : [];
+      if (startIdx >= 0 && endIdx > startIdx) {
+        const before = lines.slice(0, startIdx + 1);
+        const after = lines.slice(endIdx);
+        return [...before, ...fragmentLines, ...after].join('\n');
+      }
+      // No styles section found; insert at top
+      const block = ['@styles', ...fragmentLines, '@endstyles'];
+      return [block.join('\n'), '', prev].join('\n');
+    });
+  }, []);
 
   // Open native file dialog for dialogue import (top-level toolbar)
   const handleOpenDialogueFile = useCallback(async () => {
@@ -344,6 +361,7 @@ const App: React.FC = () => {
         try {
           const text: string = await ipcRenderer.invoke('read-file', filePath);
           const graph = parseDialogue(text);
+          setDialogueSource(text);
           setDialogueSource(text);
           try { window.localStorage.setItem('lastDialogueFilePath', filePath); } catch {}
           handleImportDialogue(graph, { autoSwitch: true });
@@ -414,6 +432,7 @@ const App: React.FC = () => {
       if (!ipcRenderer) return;
       const text: string = await ipcRenderer.invoke('read-file', filePath);
       importJson(text);
+      setDialogueSource(text);
       try { window.localStorage.setItem('lastTellrawFilePath', filePath); } catch {}
       setLastTellrawFilePath(filePath);
       ipcRenderer.send('watch-file', filePath);
@@ -520,6 +539,7 @@ const App: React.FC = () => {
                     setDialogueGraph(g => g ? { ...g, styles } : { styles, scenes: {} } as any);
                     // Do not write to disk; RAW tab remains the source of truth
                   }}
+                  onRequestRawUpdate={(stylesFragment) => applyStylesFragmentToRaw(stylesFragment)}
                 />
               </Tabs.Content>
             )}
@@ -673,14 +693,46 @@ const App: React.FC = () => {
                           .replace(/&/g, '&amp;')
                           .replace(/</g, '&lt;')
                           .replace(/>/g, '&gt;');
+                        // Gather named styles directly from current RAW text to avoid needing Apply-to-Graph
+                        const knownStyleNames = new Set<string>();
+                        try {
+                          code.split(/\r?\n/).forEach((ln) => {
+                            const m = ln.trim().match(/^style\.([A-Za-z0-9_\-]+)\b/i);
+                            if (m) knownStyleNames.add(m[1]);
+                          });
+                        } catch {}
                         const colorize = (escapedLine: string) => {
-                          // [] in yellow (bracket), {} in pink (brace)
-                          let out = escapedLine.replace(/\[|\]/g, (m) => `<span style="color:${syntaxColors.bracket}">${m}</span>`);
+                          // First: hex color codes -> colored background, white text
+                          let out = escapedLine.replace(/#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})\b/g, (m) => {
+                            const hex = m.replace('#','');
+                            let cssColor = '#' + hex;
+                            if (hex.length === 3) {
+                              cssColor = '#' + hex.split('').map(ch => ch + ch).join('');
+                            } else if (hex.length === 8) {
+                              const r = parseInt(hex.slice(0,2), 16);
+                              const g = parseInt(hex.slice(2,4), 16);
+                              const b = parseInt(hex.slice(4,6), 16);
+                              const a = parseInt(hex.slice(6,8), 16) / 255;
+                              cssColor = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
+                            }
+                            return `<span style="background-color:${cssColor}; color:#fff; padding:0 2px; border-radius:2px">${m}</span>`;
+                          });
+                          // Mark unknown style=NAME anywhere on the line (robust; not limited to {...})
+                          out = out.replace(/(\bstyle\s*=\s*)([A-Za-z0-9_-]+)/g, (_m, p1, p2) => {
+                            if (!knownStyleNames.has(p2)) {
+                              return `${p1}<span class=\"raw-unknown-style\">${p2}</span>`;
+                            }
+                            return `${p1}${p2}`;
+                          });
+                          // Then: [] in yellow (bracket), {} in pink (brace)
+                          out = out.replace(/\[|\]/g, (m) => `<span style="color:${syntaxColors.bracket}">${m}</span>`);
                           out = out.replace(/\{|\}/g, (m) => `<span style="color:${syntaxColors.brace}">${m}</span>`);
                           // inline @name references
                           out = out.replace(/@([A-Za-z0-9_\-]+)/g, (_m, p1) => `<span style="color:${syntaxColors.selector}">@${p1}</span>`);
                           // arrows '->' (escaped as -&gt;)
                           out = out.replace(/-&gt;/g, `<span style="color:${syntaxColors.punctuation}">-&gt;</span>`);
+                          // any token like word.word as a keyword (e.g., character.1, button.primary, style.name)
+                          out = out.replace(/\b([A-Za-z_][A-Za-z0-9_-]*)\.([A-Za-z_][A-Za-z0-9_-]*)\b/g, (_m, a, b) => `<span style="color:${syntaxColors.keyword}">${a}.${b}</span>`);
                           return out;
                         };
                         return code

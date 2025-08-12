@@ -172,6 +172,13 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   // Transform is tracked via onMove into transformRef to avoid requiring useStore
   // When hovering one instance of a scene, highlight all instances by tracking the logical scene id
   const [hoveredSceneId, setHoveredSceneId] = useState<string | null>(null);
+  const lastHoveredSceneIdRef = useRef<string | null>(null);
+  const prevHoveredSceneIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Track previous hovered to update both previous and current IDs minimally
+    prevHoveredSceneIdRef.current = lastHoveredSceneIdRef.current;
+    lastHoveredSceneIdRef.current = hoveredSceneId;
+  }, [hoveredSceneId]);
   // Persisted layout cache (positions + viewport)
   const CACHE_KEY = 'EnhancedConversationGraph.layout.v1';
   const [hasCachedLayout, setHasCachedLayout] = useState<boolean>(false);
@@ -206,6 +213,14 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
       // ignore
     }
   }, []);
+  // Save once on page unload instead of during continuous interactions
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      try { saveLayoutCache(); } catch (_e) { /* ignore */ }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [saveLayoutCache]);
   // Cached maps for performance
   const parentToChildrenRef = useRef<Record<string, string[]>>({});
   const ownHeightMapRef = useRef<Record<string, number>>({});
@@ -1366,16 +1381,28 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         // end per-node processing
       }
 
-      setGraphNodes((prev: Node[]) => prev.map((n: any) => {
-        if (draggedIdsRef.current.has(n.id)) return n;
-        const target = posRef.current[n.id];
-        return { ...n, position: { x: target.x, y: target.y } };
-      }));
+      // Only update nodes whose positions actually changed beyond a small epsilon.
+      setGraphNodes((prev: Node[]) => {
+        let anyChanged = false;
+        const EPS = 0.01;
+        const next = prev.map((n: any) => {
+          if (draggedIdsRef.current.has(n.id)) return n;
+          const target = posRef.current[n.id];
+          const px = n.position?.x ?? 0;
+          const py = n.position?.y ?? 0;
+          if (Math.abs(px - target.x) < EPS && Math.abs(py - target.y) < EPS) return n;
+          anyChanged = true;
+          return { ...n, position: { x: target.x, y: target.y } };
+        });
+        return anyChanged ? next : prev;
+      });
 
       // Stop animating when stable for a period; restart on any interaction/param change
       const isIdle = frameMaxDelta < 0.05 && !totalsDirtyRef.current && draggedIdsRef.current.size === 0;
       if (isIdle) idleFramesRef.current += 1; else idleFramesRef.current = 0;
       if (idleFramesRef.current > 30) {
+        // Persist layout once when we settle, avoiding frequent writes during interaction
+        try { saveLayoutCache(); } catch (_e) { /* ignore */ }
         animFrameRef.current = null;
         return;
       }
@@ -1400,8 +1427,9 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     velRef.current[node.id] = { vx: 0, vy: 0 };
   }, [edges]);
 
-  const handleNodeDrag = useCallback(() => {
-    // do nothing during drag; user has priority
+  const handleNodeDrag = useCallback((_e: any, node: Node) => {
+    // Avoid running the whole simulation; just track the latest drag position in refs
+    posRef.current[node.id] = { x: node.position.x, y: node.position.y };
   }, []);
 
   const handleNodeDragStop = useCallback((_e: any, node: Node) => {
@@ -1425,7 +1453,22 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
 
   const displayNodes = useMemo(() => {
     if (!graphNodes) return [] as any[];
-    // Build local dims for width calculations
+    const prevHovered = prevHoveredSceneIdRef.current;
+    if (!SHOW_NODE_DEBUG) {
+      // Fast path: only update nodes whose hover state changed
+      return (graphNodes as any[]).map(n => {
+        const logicalSceneId = (n as any).data?.id as string | undefined;
+        const nowHovered = !!logicalSceneId && hoveredSceneId === logicalSceneId;
+        const wasHovered = !!logicalSceneId && prevHovered === logicalSceneId;
+        if (!nowHovered && !wasHovered) return n;
+        return {
+          ...n,
+          data: { ...(n.data || {}), isHovered: nowHovered },
+          style: nowHovered ? { ...(n.style || {}), zIndex: 2 } : n.style,
+        } as any;
+      });
+    }
+    // Debug path: compute overlays only when debugging is enabled
     const dimsLocal: Record<string, { w: number; h: number; type?: string }> = {};
     (graphNodes as any[]).forEach((n: any) => {
       const fallbackW = n.type === 'ghost' ? 140 : 520;
@@ -1448,16 +1491,10 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         if (kids.length !== 1) break;
         const child = kids[0];
         // Mirror dynamic link distance roughly for display using parent's children extent
-        const childExtent = ((): number => {
-          const kidsLocal = mapping[current] || [];
-          if (kidsLocal.length === 0) return 0;
-          // approximate using cached totals
-          let sum = 0;
-          for (const k of kidsLocal) sum += (totalHeightMapRef.current[k] ?? (dimsLocal[k]?.h ?? 0));
-          sum += 12 * Math.max(0, kidsLocal.length - 1);
-          return sum;
-        })();
-        const link = Math.max(120, childExtent * 0.25);
+        let sum = 0;
+        for (const k of kids) sum += (totalHeightMapRef.current[k] ?? (dimsLocal[k]?.h ?? 0));
+        sum += 12 * Math.max(0, kids.length - 1);
+        const link = Math.max(120, sum * 0.25);
         width += link + (dimsLocal[child]?.w ?? 0);
         current = child;
       }
@@ -1478,7 +1515,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         data: { ...(n.data || {}), isHovered, debugHeight: totalH, debugOwnHeight: ownH, debugTotalHeight: totalH, debugOwnWidth: ownW, debugTotalWidth: totalW },
         // slight wrapper elevation as a fallback (main styling handled inside node components)
         style: isHovered ? { ...(n.style || {}), zIndex: 2 } : n.style,
-      };
+      } as any;
     });
   }, [graphNodes, hoveredSceneId, debugVersion]);
 
@@ -1516,12 +1553,13 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
           nodesDraggable
           style={{ backgroundColor: '#1e1e1e' }}
           onMove={(_evt, viewport) => {
+            // Track viewport for correct math, but avoid expensive localStorage writes per-frame
             if (viewport) transformRef.current = [viewport.x, viewport.y, viewport.zoom];
-            saveLayoutCache();
           }}
           fitView={!hasCachedLayout}
           defaultViewport={hasCachedLayout && initialViewport ? initialViewport : undefined}
           proOptions={{ hideAttribution: true }}
+          onlyRenderVisibleElements
           onInit={(instance) => {
             // hydrate any last targets into overlay if debug shows
             if (DEBUG_SHOW_TARGETS) targetCentersRef.current = { ...desiredTargetsRef.current };

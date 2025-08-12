@@ -9,6 +9,7 @@ export interface PresetsPanelProps {
   onUseCommand: (command: string) => void;
   graph?: DialogueGraph | null;
   onUpdateStyles?: (styles: DialogueGraph['styles']) => void;
+  onRequestRawUpdate?: (nextRaw: string) => void;
 }
 
 type ParamValues = Record<string, string>;
@@ -25,7 +26,7 @@ const buildCommandFromPreset = (preset: Preset, params: ParamValues, target: str
   return joined;
 };
 
-const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpdateStyles }) => {
+const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpdateStyles, onRequestRawUpdate }) => {
   const [selectedId, setSelectedId] = React.useState<string>('');
   const current = null as any;
   const characterPresets: any[] = [];
@@ -34,11 +35,50 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
   // Editable button style state (saved into graph.styles.buttons)
   const [buttonStyles, setButtonStyles] = React.useState(() => graph?.styles?.buttons ?? {});
   const [speakerStyles, setSpeakerStyles] = React.useState(() => graph?.styles?.speakers ?? {});
+  const [namedStyles, setNamedStyles] = React.useState<Record<string, any>>(() => (graph?.styles as any)?.styles ?? {});
   React.useEffect(() => { setButtonStyles(graph?.styles?.buttons ?? {}); setSpeakerStyles(graph?.styles?.speakers ?? {}); }, [graph]);
   const persistStyles = (nextButtons: any, nextSpeakers: any) => {
     setButtonStyles(nextButtons);
     setSpeakerStyles(nextSpeakers);
-    onUpdateStyles?.({ buttons: nextButtons, speakers: nextSpeakers });
+    onUpdateStyles?.({ buttons: nextButtons, speakers: nextSpeakers, styles: namedStyles } as any);
+    // Also update RAW tab preview text in App by serializing styles into raw fragment
+    try {
+      const lines: string[] = [];
+      // Characters: sort by name for stability
+      Object.entries(nextSpeakers || {}).forEach(([name, style]: any, idx) => {
+        const nameStyle = style?.name || {};
+        const textStyle = style?.text || {};
+        const parts: string[] = [];
+        parts.push(`character.${idx + 1}`);
+        parts.push(`name=${name}`);
+        if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
+        if (nameStyle?.bold) parts.push(`name_bold=true`);
+        if (nameStyle?.italic) parts.push(`name_italic=true`);
+        if (nameStyle?.underline) parts.push(`name_underline=true`);
+        if (nameStyle?.strikethrough) parts.push(`name_strikethrough=true`);
+        if (textStyle?.color) parts.push(`text_color=${textStyle.color}`);
+        if (textStyle?.bold) parts.push(`text_bold=true`);
+        if (textStyle?.italic) parts.push(`text_italic=true`);
+        if (textStyle?.underline) parts.push(`text_underline=true`);
+        if (textStyle?.strikethrough) parts.push(`text_strikethrough=true`);
+        lines.push(parts.join(' '));
+      });
+      if (Object.keys(nextSpeakers || {}).length > 0) lines.push('');
+      // Buttons
+      Object.entries(nextButtons || {}).forEach(([id, st]: any, idx) => {
+        const parts: string[] = [];
+        const label = st?.label || id;
+        parts.push(`button.${idx + 1}`);
+        parts.push(`label=${label}`);
+        if (st?.color) parts.push(`color=${st.color}`);
+        if (st?.bold) parts.push(`bold=true`);
+        if (st?.italic) parts.push(`italic=true`);
+        if (st?.underline) parts.push(`underline=true`);
+        if (st?.strikethrough) parts.push(`strikethrough=true`);
+        lines.push(parts.join(' '));
+      });
+      onRequestRawUpdate?.(lines.join('\n'));
+    } catch {}
   };
   // Stable random preview per character for the lifetime of this tab mount
   const characterPreviewRef = React.useRef<Record<string, string>>({});
@@ -164,6 +204,100 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
     <Card size="2" variant="surface">
       <Flex direction="column" gap="3">
         <Heading size="5">Presets</Heading>
+        {/* Named Styles (style.<name>) */}
+        <Card size="2" variant="classic">
+          <Heading size="3" mb="2">Styles</Heading>
+          <Flex direction="column" gap="2">
+            {Object.entries(namedStyles).map(([key, st]) => {
+              const color = (st as any)?.color || '#ffffff';
+              return (
+                <Flex key={key} align="center" gap="3" wrap="wrap">
+                  <Text size="2" style={{ minWidth: 90 }}>{`style.${key}`}</Text>
+                  {/* Preview chip */}
+                  <div style={{ background: '#1C1F20', border: '1px solid var(--gray-a7)', borderRadius: 6, padding: '4px 8px', color, fontWeight: st?.bold ? 700 : 500, fontStyle: st?.italic ? 'italic' : 'normal', textDecoration: st?.underline ? 'underline' : st?.strikethrough ? 'line-through' : 'none' }}>Sample</div>
+                  <Popover.Root>
+                    <Popover.Trigger>
+                      <div role="button" aria-label="Pick color" style={{ width: 28, height: 28, backgroundColor: color, border: '1px solid var(--gray-a7)', borderRadius: 4, cursor: 'pointer' }} />
+                    </Popover.Trigger>
+                    <Popover.Content style={{ width: 260 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <HexColorPicker style={{ width: '100%' }} color={color} onChange={(c) => {
+                          const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], color: c } };
+                          setNamedStyles(next);
+                          onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any);
+                          // Issue raw update with full styles serialization
+                          const lines: string[] = [];
+                          Object.entries(next).forEach(([k, st2]: any) => {
+                            const parts: string[] = [`style.${k}`];
+                            if (st2?.color) parts.push(`color=${st2.color}`);
+                            if (st2?.bold) parts.push(`bold=true`);
+                            if (st2?.italic) parts.push(`italic=true`);
+                            if (st2?.underline) parts.push(`underline=true`);
+                            if (st2?.strikethrough) parts.push(`strikethrough=true`);
+                            lines.push(parts.join(' '));
+                          });
+                          // append character + button fragments too
+                          Object.entries(speakerStyles || {}).forEach(([name, style]: any, idx) => {
+                            const nameStyle = style?.name || {};
+                            const textStyle = style?.text || {};
+                            const parts: string[] = [`character.${idx + 1}`, `name=${name}`];
+                            if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
+                            if (nameStyle?.bold) parts.push(`name_bold=true`);
+                            if (nameStyle?.italic) parts.push(`name_italic=true`);
+                            if (nameStyle?.underline) parts.push(`name_underline=true`);
+                            if (nameStyle?.strikethrough) parts.push(`name_strikethrough=true`);
+                            if (textStyle?.color) parts.push(`text_color=${textStyle.color}`);
+                            if (textStyle?.bold) parts.push(`text_bold=true`);
+                            if (textStyle?.italic) parts.push(`text_italic=true`);
+                            if (textStyle?.underline) parts.push(`text_underline=true`);
+                            if (textStyle?.strikethrough) parts.push(`text_strikethrough=true`);
+                            lines.push(parts.join(' '));
+                          });
+                          Object.entries(buttonStyles || {}).forEach(([id, st3]: any, idx) => {
+                            const parts: string[] = [`button.${idx + 1}`, `label=${st3?.label || id}`];
+                            if (st3?.color) parts.push(`color=${st3.color}`);
+                            if (st3?.bold) parts.push(`bold=true`);
+                            if (st3?.italic) parts.push(`italic=true`);
+                            if (st3?.underline) parts.push(`underline=true`);
+                            if (st3?.strikethrough) parts.push(`strikethrough=true`);
+                            lines.push(parts.join(' '));
+                          });
+                          onRequestRawUpdate?.(lines.join('\n'));
+                        }} />
+                        <div style={makeGridStyle(CHAR_SWATCH_SIZE)}>
+                          {[ '#000000','#AA0000','#00AA00','#00AAAA','#555555','#FF5555','#55FF55','#55FFFF','#AAAAAA','#0000AA','#AA00AA','#FFAA00','#FFFFFF','#5555FF','#FF55FF','#FFFF55', ].map(hex => (
+                            <button key={hex} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], color: hex } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); onRequestRawUpdate?.(Object.entries(next).map(([k, v]: any) => { const p: string[] = [`style.${k}`]; if (v?.color) p.push(`color=${v.color}`); if (v?.bold) p.push(`bold=true`); if (v?.italic) p.push(`italic=true`); if (v?.underline) p.push(`underline=true`); if (v?.strikethrough) p.push(`strikethrough=true`); return p.join(' '); }).join('\n')); }} style={makeSwatchStyle(hex, CHAR_SWATCH_SIZE)} aria-label={hex} />
+                          ))}
+                        </div>
+                      </div>
+                    </Popover.Content>
+                  </Popover.Root>
+                  <Button variant={st?.bold ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], bold: !st?.bold } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); }}>B</Button>
+                  <Button variant={st?.italic ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], italic: !st?.italic } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); }}><em>I</em></Button>
+                  <Button variant={st?.underline ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], underline: !st?.underline } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); }}><u>U</u></Button>
+                  <Button variant={st?.strikethrough ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], strikethrough: !st?.strikethrough } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); }}><s>S</s></Button>
+                </Flex>
+              );
+            })}
+            {/* Add new style */}
+            <Flex align="center" gap="2">
+              <Text size="2">New style:</Text>
+              <TextField.Root placeholder="name" size="2" style={{ width: 160 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const name = (e.target as HTMLInputElement).value.trim();
+                    if (!name) return;
+                    if (namedStyles[name]) return;
+                    const next = { ...namedStyles, [name]: { color: '#ffffff' } };
+                    setNamedStyles(next);
+                    onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any);
+                    (e.target as HTMLInputElement).value = '';
+                  }
+                }}
+              />
+            </Flex>
+          </Flex>
+        </Card>
         {/* Characters (two sections: Name style and Text style), mirrors button editor patterns */}
         <Card size="2" variant="classic">
           <Heading size="3" mb="2">Characters</Heading>
@@ -281,6 +415,22 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                 </Card>
               );
             })}
+            {/* Add new character */}
+            <Flex align="center" gap="2">
+              <Text size="2">New character:</Text>
+              <TextField.Root placeholder="name" size="2" style={{ width: 160 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const name = (e.target as HTMLInputElement).value.trim();
+                    if (!name) return;
+                    if (speakerStyles[name]) return;
+                    const nextSpeakers = { ...speakerStyles, [name]: { name: { color: '#ffffff' }, text: { color: '#ffffff' } } };
+                    persistStyles(buttonStyles, nextSpeakers);
+                    (e.target as HTMLInputElement).value = '';
+                  }
+                }}
+              />
+            </Flex>
           </Flex>
         </Card>
 
@@ -488,6 +638,23 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
             ) : (
               <Text size="2" style={{ color: 'var(--gray-a10)' }}>Select a button above to edit its appearance.</Text>
             )}
+            {/* Add new button */}
+            <Flex align="center" gap="2">
+              <Text size="2">New button:</Text>
+              <TextField.Root placeholder="label" size="2" style={{ width: 160 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const label = (e.target as HTMLInputElement).value.trim();
+                    if (!label) return;
+                    if (buttonStyles[label]) return;
+                    const nextButtons = { ...buttonStyles, [label]: { label, color: '#55ff55' } };
+                    persistStyles(nextButtons, speakerStyles);
+                    setSelectedButtonId(label);
+                    (e.target as HTMLInputElement).value = '';
+                  }
+                }}
+              />
+            </Flex>
           </Flex>
         </Card>
       </Flex>

@@ -66,3 +66,9 @@
 .token.node_name_definition {
   color: #00d3d3; /* aqua */
 }
+
+/* Wavy underline for unknown styles in RAW editor */
+.raw-unknown-style {
+  color: var(--red9);
+  text-decoration: underline wavy var(--red9);
+}

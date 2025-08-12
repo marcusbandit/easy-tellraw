@@ -11,8 +11,10 @@ const STYLE_LINE = /^(speaker\s+([A-Za-z0-9_\-]+)|button\.([A-Za-z0-9_\-]+))\s+c
 // New RAW styles format (outside or inside styles):
 // character.1 name=Jordan name_color=#b6a02F text_color=#56C0FF text_bold=true
 // button.1 label=default color=#333333 bold=true
+// style.primary color=#ff00ff bold=true italic=true
 const CHARACTER_STYLE_LINE = /^character\.(\d+)\s+(.+)$/i;
 const BUTTON_STYLE_LINE = /^button\.(\d+)\s+(.+)$/i;
+const NAMED_STYLE_LINE = /^style\.([A-Za-z0-9_\-]+)\s+(.+)$/i;
 
 function parseKeyValueProps(props: string): Record<string, string> {
   const result: Record<string, string> = {};
@@ -99,6 +101,19 @@ export function parseDialogue(source: string): DialogueGraph {
       if (props['strikethrough'] === 'true') cur.strikethrough = true;
       if (label) cur.label = label;
       styles.buttons[id] = cur;
+      continue;
+    }
+    if ((mm = line.match(NAMED_STYLE_LINE))) {
+      const name = mm[1];
+      const props = parseKeyValueProps(mm[2]);
+      const cur: any = (styles as any).styles?.[name] || {};
+      if (!styles.styles) (styles as any).styles = {};
+      if (props['color']) cur.color = props['color'];
+      if (props['bold'] === 'true') cur.bold = true;
+      if (props['italic'] === 'true') cur.italic = true;
+      if (props['underline'] === 'true') cur.underline = true;
+      if (props['strikethrough'] === 'true') cur.strikethrough = true;
+      (styles as any).styles[name] = cur;
       continue;
     }
 
