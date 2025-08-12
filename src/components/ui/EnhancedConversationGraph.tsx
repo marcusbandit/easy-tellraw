@@ -679,8 +679,18 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
                   break;
                 }
               }
-              const applied = failed ? (delta * 0.5) : delta;
+              const applied = failed ? (delta) : delta;
               for (const idx of passing) offsets[idx] -= applied;
+              // If a failure occurred, apply combined total height (of passing nodes) to failing and subsequent nodes
+              if (failed && passing.length > 0) {
+                const failIdx = nextIdx + passing.length;
+                let combined = 0;
+                for (let t = 0; t < passing.length - 1; t++) {
+                  combined += effectiveHeights[passing[t]];
+                }
+                combined += GAP_BETWEEN_SIBLINGS * Math.max(0, passing.length - 1);
+                for (let j = failIdx; j < childList.length; j++) offsets[j] -= combined;
+              }
             }
           } else {
             // Reverse check: can CURRENT fit NEXT's chain?
@@ -703,8 +713,17 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
                     break;
                   }
                 }
-                const applied = failed ? (delta * 0.5) : delta;
+                const applied = failed ? (delta) : delta;
                 for (const idx of passing) offsets[idx] -= applied;
+                if (failed && passing.length > 0) {
+                  const failIdx = nextIdx + passing.length;
+                  let combined = 0;
+                  for (let t = 0; t < passing.length - 1; t++) {
+                    combined += effectiveHeights[passing[t]];
+                  }
+                  combined += GAP_BETWEEN_SIBLINGS * Math.max(0, passing.length - 1);
+                  for (let j = failIdx; j < childList.length; j++) offsets[j] -= combined;
+                }
               }
             }
           }
