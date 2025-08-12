@@ -1,0 +1,52 @@
+@styles
+speaker Jordan color=#56C0FF
+speaker Kara color=#FF6BAA
+speaker Guard color=#D0D0D0
+
+button.default color=#333333
+button.primary color=#2D6CDF
+button.danger color=#B00020
+@endstyles
+
+@start
+Jordan: Should we go save Kara? [Yes -> @save_kara]{class=primary} [No -> @go_home]
+Guard: Halt. Show your pass, or answer this: {italic}spell “key”{/}.
+Jordan: I can also open the map. [Open Map -> ui:map/open]{color=#00FFC8}
+
+@save_kara
+Jordan: Okay, let’s move fast. [Call for help -> ops:comms/request_help]
+Jordan{color=#FFD700}: I’ll take point. You cover me. [On it -> @approach_base]
+
+@go_home
+Jordan: Not today. Let’s regroup and plan. 
+
+@approach_base
+Guard: You again? Papers?
+Jordan: How about a riddle instead? [Sure -> @riddle] [Nope -> @standoff]{class=danger}
+
+@riddle
+Guard: What’s 2 + 2? [4 -> @pass_inner]{class=primary} [5 -> @fail_quiz]
+
+@standoff
+Guard: Then no entry. [Leave -> @large_thing]
+
+@large_thing
+Jordan: This is gonna be a very long peice of text.
+Guard: Well thats a strrange thing to say.
+Kara: Yeah, Jordan. Are you okay?
+Jordan: Sorry, what? I think i just blacked out...
+Guard: Wanna just take him to the medbay? [Yes please -> @inner_city] [Nah, let him trip -> @die]
+
+@die
+Syetem: You have died...
+
+@pass_inner
+Guard: Seems right. Proceed.
+Jordan: {bold}Let’s go{/}. [Enter -> @inner_city]{class=primary}
+
+@fail_quiz
+Guard: That’s not it. Try again. [Retry -> @riddle] [Leave -> @go_home]
+
+@inner_city
+Jordan: Woah… different vibe in here.
+[Trigger cutscene -> scene:inner_city/load]

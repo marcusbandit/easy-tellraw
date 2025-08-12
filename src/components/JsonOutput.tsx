@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 import { SegmentedControl, Button } from '@radix-ui/themes';
 import { TELLRAW_PREFIX } from '../constants';
@@ -48,7 +48,13 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
   const dynamicPrefix = `tellraw ${selectedTarget} `;
   const jsonPart = jsonString.startsWith(prefix) ? jsonString.substring(prefix.length) : jsonString;
   // Determine raw output data: full or inline split segments
-  const rawFull = JSON.parse(jsonPart) as any[];
+  const rawFull = useMemo(() => {
+    try {
+      return JSON.parse(jsonPart) as any[];
+    } catch {
+      return [] as any[];
+    }
+  }, [jsonPart]);
   // If there's a marked selection, show marked segments inline
   const rawData: any[] = markedSegments != null && beforeSegments != null && afterSegments != null
     ? [...beforeSegments, ...markedSegments, ...afterSegments]
@@ -63,7 +69,6 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
       return seg;
     });
   const outputData = mapColorNames(rawData);
-  const prettyJson = prefix + JSON.stringify(outputData, null, 2);
   const prettyWithTarget = dynamicPrefix + JSON.stringify(outputData, null, 2);
   const collapsedRaw = mapColorNames(rawFull);
   const collapsedJson = dynamicPrefix + JSON.stringify(collapsedRaw);

@@ -131,14 +131,6 @@ export const ColorButton = ({ editor, color: initialColor, path }: { editor: any
     }
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
   };
-  // Adjust brightness: amount positive to lighten, negative to darken (amount in [0,1])
-  const adjustBrightness = (hex: string, amount: number): string => {
-    const [r,g,b] = hexToRgb(hex);
-    let [h,s,l] = rgbToHsl(r,g,b);
-    l = Math.min(1, Math.max(0, l + amount));
-    const [nr,ng,nb] = hslToRgb(h,s,l);
-    return rgbToHex(nr,ng,nb);
-  };
   // Compute border color by adjusting lightness and desaturation by 30%
   const adjustBorderColor = (hex: string): string => {
     const cleanHex = hex.toLowerCase();
