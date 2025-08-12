@@ -620,6 +620,133 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         }
         return width;
       };
+      // Helper: compute combined height span of a node's immediate children using the same
+      // stacking/offset rules (without re-centering), measured using own heights after offsets
+      const computeImmediateChildrenCombinedExtent = (parentIdLocal: string): number => {
+        const localChildren = parentToChildren[parentIdLocal] || [];
+        if (localChildren.length === 0) return 0;
+        const GAP = GAP_BETWEEN_SIBLINGS;
+        const effectiveHeightsLocal: number[] = localChildren.map(cid => (
+          totalHeightMapRef.current[cid] ?? (dims[cid]?.h ?? 0)
+        ));
+        const baseTargetsLocal: number[] = new Array(localChildren.length);
+        let beforeLocal = 0;
+        const totalHLocal = effectiveHeightsLocal.reduce((a, b) => a + b, 0) + GAP * Math.max(0, localChildren.length - 1);
+        for (let i = 0; i < localChildren.length; i++) {
+          const slotH = effectiveHeightsLocal[i];
+          baseTargetsLocal[i] = -totalHLocal / 2 + beforeLocal + slotH / 2;
+          beforeLocal += effectiveHeightsLocal[i] + (i < localChildren.length - 1 ? GAP : 0);
+        }
+        const offsetsLocal: number[] = new Array(localChildren.length).fill(0);
+        for (let i = 0; i < localChildren.length - 1; i++) {
+          const curIdLocal = localChildren[i];
+          const nextIdxLocal = i + 1;
+          const nextIdLocal = localChildren[nextIdxLocal];
+          const nextKidsLocal = parentToChildren[nextIdLocal] || [];
+          const curKidsLocal = parentToChildren[curIdLocal] || [];
+          if (nextKidsLocal.length === 0 && curKidsLocal.length === 0) continue;
+          const curTotalWLocal = totalWidthMapRef.current[curIdLocal] ?? computeChainWidth(curIdLocal);
+          const nextOwnWLocal = ownWidthMapRef.current[nextIdLocal] ?? (dims[nextIdLocal]?.w ?? 0);
+          if (nextOwnWLocal >= curTotalWLocal) {
+            const nextTotalHLocal = totalHeightMapRef.current[nextIdLocal] ?? (dims[nextIdLocal]?.h ?? 0);
+            const nextOwnHLocal = ownHeightMapRef.current[nextIdLocal] ?? (dims[nextIdLocal]?.h ?? 0);
+            const deltaLocal = 0.5 * Math.max(0, nextTotalHLocal - nextOwnHLocal);
+            if (deltaLocal > 0) {
+              const passingIdx: number[] = [];
+              let failedLocal = false;
+              for (let k = nextIdxLocal; k < localChildren.length; k++) {
+                const kid = localChildren[k];
+                const kidOwnW = ownWidthMapRef.current[kid] ?? (dims[kid]?.w ?? 0);
+                if (kidOwnW >= curTotalWLocal) passingIdx.push(k); else { failedLocal = true; break; }
+              }
+              const appliedLocal = failedLocal ? (deltaLocal) : deltaLocal;
+              for (const idx of passingIdx) offsetsLocal[idx] -= appliedLocal;
+              if (failedLocal && passingIdx.length > 0) {
+                const failIdx = nextIdxLocal + passingIdx.length;
+                let combinedLocal = 0;
+                for (let t = 0; t < passingIdx.length - 1; t++) combinedLocal += effectiveHeightsLocal[passingIdx[t]];
+                combinedLocal += GAP * Math.max(0, passingIdx.length - 1);
+                for (let j = failIdx; j < localChildren.length; j++) offsetsLocal[j] -= combinedLocal;
+              }
+            }
+          } else {
+            const curOwnWLocal = ownWidthMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.w ?? 0);
+            const nextTotalWLocal = totalWidthMapRef.current[nextIdLocal] ?? computeChainWidth(nextIdLocal);
+            if (curOwnWLocal >= nextTotalWLocal) {
+              const curTotalHLocal = totalHeightMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.h ?? 0);
+              const curOwnHLocal = ownHeightMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.h ?? 0);
+              const deltaLocal = 0.5 * Math.max(0, curTotalHLocal - curOwnHLocal);
+              if (deltaLocal > 0) {
+                const passingIdx: number[] = [];
+                let failedLocal = false;
+                for (let k = nextIdxLocal; k < localChildren.length; k++) {
+                  const kid = localChildren[k];
+                  const kidTotalW = totalWidthMapRef.current[kid] ?? computeChainWidth(kid);
+                  if (curOwnWLocal >= kidTotalW) passingIdx.push(k); else { failedLocal = true; break; }
+                }
+                const appliedLocal = failedLocal ? (deltaLocal) : deltaLocal;
+                for (const idx of passingIdx) offsetsLocal[idx] -= appliedLocal;
+                if (failedLocal && passingIdx.length > 0) {
+                  const failIdx = nextIdxLocal + passingIdx.length;
+                  let combinedLocal = 0;
+                  for (let t = 0; t < passingIdx.length - 1; t++) combinedLocal += effectiveHeightsLocal[passingIdx[t]];
+                  combinedLocal += GAP * Math.max(0, passingIdx.length - 1);
+                  for (let j = failIdx; j < localChildren.length; j++) offsetsLocal[j] -= combinedLocal;
+                }
+              }
+            } else {
+              const curChildrenLocal = parentToChildren[curIdLocal] || [];
+              let maxChildOwnWLocal = 0;
+              for (const ch of curChildrenLocal) {
+                const w = ownWidthMapRef.current[ch] ?? (dims[ch]?.w ?? 0);
+                if (w > maxChildOwnWLocal) maxChildOwnWLocal = w;
+              }
+              const extendedCapacityLocal = curOwnWLocal + LINK_DISTANCE + maxChildOwnWLocal;
+              if (extendedCapacityLocal >= nextTotalWLocal) {
+                // delta based on current's children combined height
+                // compute combined height of curIdLocal's immediate children (recursively not needed here)
+                let combinedChildrenHLocal = 0;
+                if (curChildrenLocal.length > 0) {
+                  // sum totals + gaps
+                  for (const ch of curChildrenLocal) combinedChildrenHLocal += (totalHeightMapRef.current[ch] ?? (dims[ch]?.h ?? 0));
+                  combinedChildrenHLocal += GAP * Math.max(0, curChildrenLocal.length - 1);
+                }
+                const curTotalHLocal = totalHeightMapRef.current[curIdLocal] ?? (dims[curIdLocal]?.h ?? 0);
+                const deltaLocal = 0.5 * Math.max(0, curTotalHLocal - combinedChildrenHLocal);
+                if (deltaLocal > 0) {
+                  const passingIdx: number[] = [];
+                  let failedLocal = false;
+                  for (let k = nextIdxLocal; k < localChildren.length; k++) {
+                    const kid = localChildren[k];
+                    const kidTotalW = totalWidthMapRef.current[k] ?? computeChainWidth(kid);
+                    if (extendedCapacityLocal >= kidTotalW) passingIdx.push(k); else { failedLocal = true; break; }
+                  }
+                  for (const idx of passingIdx) offsetsLocal[idx] -= deltaLocal;
+                  if (failedLocal && passingIdx.length > 0) {
+                    const failIdx = nextIdxLocal + passingIdx.length;
+                    let combinedLocal = 0;
+                    for (let t = 0; t < passingIdx.length - 1; t++) combinedLocal += effectiveHeightsLocal[passingIdx[t]];
+                    combinedLocal += GAP * Math.max(0, passingIdx.length - 1);
+                    for (let j = failIdx; j < localChildren.length; j++) offsetsLocal[j] -= combinedLocal;
+                  }
+                }
+              }
+            }
+          }
+        }
+        // compute span using own heights with offsets
+        let minTopLocal = Infinity, maxBottomLocal = -Infinity;
+        for (let i = 0; i < localChildren.length; i++) {
+          const cid = localChildren[i];
+          const center = baseTargetsLocal[i] + (offsetsLocal[i] || 0);
+          const ownH = ownHeightMapRef.current[cid] ?? (dims[cid]?.h ?? 0);
+          const top = center - ownH / 2;
+          const bottom = center + ownH / 2;
+          if (top < minTopLocal) minTopLocal = top;
+          if (bottom > maxBottomLocal) maxBottomLocal = bottom;
+        }
+        return Math.max(0, maxBottomLocal - minTopLocal);
+      };
       // Precompute per-parent child target Y positions using total subtree heights only
       const parentChildTargetY: Record<string, Record<string, number>> = {};
       const GAP_BETWEEN_SIBLINGS = 12;
@@ -723,6 +850,46 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
                   }
                   combined += GAP_BETWEEN_SIBLINGS * Math.max(0, passing.length - 1);
                   for (let j = failIdx; j < childList.length; j++) offsets[j] -= combined;
+                }
+              }
+            } else {
+              // Extended capacity: current own width + (link + max immediate child own width)
+              const curChildren = parentToChildren[curId] || [];
+              let maxChildOwnW = 0;
+              for (const ch of curChildren) {
+                const w = ownWidthMapRef.current[ch] ?? (dims[ch]?.w ?? 0);
+                if (w > maxChildOwnW) maxChildOwnW = w;
+              }
+              const extendedCapacity = curOwnW + LINK_DISTANCE + maxChildOwnW;
+              if (extendedCapacity >= nextTotalW) {
+                // Move by current total height minus combined extent of immediate children (with offsets)
+                const combinedChildrenH = computeImmediateChildrenCombinedExtent(curId);
+                const curTotalH = totalHeightMapRef.current[curId] ?? (dims[curId]?.h ?? 0);
+                const delta = 0.5 * Math.max(0, curTotalH - combinedChildrenH);
+                if (delta > 0) {
+                  const passing: number[] = [];
+                  let failed = false;
+                  for (let k = nextIdx; k < childList.length; k++) {
+                    const kid = childList[k];
+                    const kidTotalW = totalWidthMapRef.current[kid] ?? computeChainWidth(kid);
+                    if (extendedCapacity >= kidTotalW) {
+                      passing.push(k);
+                    } else {
+                      failed = true;
+                      break;
+                    }
+                  }
+                  const applied = delta;
+                  for (const idx of passing) offsets[idx] -= applied;
+                  if (failed && passing.length > 0) {
+                    const failIdx = nextIdx + passing.length;
+                    let combined = 0;
+                    for (let t = 0; t < passing.length - 1; t++) {
+                      combined += effectiveHeights[passing[t]];
+                    }
+                    combined += GAP_BETWEEN_SIBLINGS * Math.max(0, passing.length - 1);
+                    for (let j = failIdx; j < childList.length; j++) offsets[j] -= combined;
+                  }
                 }
               }
             }
