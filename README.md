@@ -19,8 +19,7 @@ React + Electron editor for crafting Minecraft /tellraw JSON with live preview, 
   - Use the target selector to switch the command target dynamically.
   - Buttons: Import Tellraw Command (with JSON syntax highlighting), Copy Tellraw Command, Reset Tellraw.
 - **Graph tab**
-  - When a dialogue file is imported, the enhanced conversation graph (`EnhancedConversationGraph`) is shown.
-  - Without a dialogue file, a segment-based graph editor (`GraphEditor`) is available.
+  - The enhanced conversation graph (`EnhancedConversationGraph`) is used for visualization.
 
 ### Dialogue Format
 
@@ -73,7 +72,7 @@ Defined in `package.json`:
 - `src/components/ActionsPanel.tsx`: Click/hover action controls bound to selection/segments.
 - `src/components/JsonOutput.tsx`: Live Tellraw string with syntax highlighting and target selector.
 - `src/hooks/useTellrawSegments.ts`: Parses Slate value into Tellraw segments and paths.
-- `src/components/ui/GraphEditor.tsx` and `EnhancedConversationGraph.tsx`: Graph UIs.
+- `src/components/ui/EnhancedConversationGraph.tsx`: Conversation Graph UI.
 - `docs/Dialogue-Cheat-Sheet.md`: Dialogue authoring reference.
 
 ### Electron Notes

@@ -6,17 +6,18 @@ import { initialValue } from "./components/TextEditor";
 import Sidebar from "./components/Sidebar";
 import EditorContainer from "./components/EditorContainer";
 import ActionsPanel from "./components/ActionsPanel";
-import GraphEditor from "./components/ui/GraphEditor";
-import ConversationGraph from "./components/ui/ConversationGraph";
 import EnhancedConversationGraph from "./components/ui/EnhancedConversationGraph";
 import { useTellrawSegments } from "./hooks/useTellrawSegments";
-import { Flex, Tabs, Box, Button } from "@radix-ui/themes";
+import { Flex, Tabs, Box, Button, Card, Text } from "@radix-ui/themes";
+import PresetsPanel from "./components/PresetsPanel";
 import { Slate, withReact } from "slate-react";
 import { withHistory } from "slate-history";
 import { Transforms } from "slate";
 import { flattenSlateFragmentToCharSegments, squashAdjacentSegments } from "./lib/segments";
 import { DialogueGraph } from "./types/dialogue";
 import { parseDialogue } from "./lib/dialogueParser";
+import { syntaxColors } from "./syntaxColors";
+import Editor from "react-simple-code-editor";
 
 const App: React.FC = () => {
   // State for Slate content and remount key
@@ -48,13 +49,44 @@ const App: React.FC = () => {
   const isProgrammaticUpdateRef = useRef<boolean>(false);
   // Tellraw target selector state
   const [target, setTarget] = useState<string>('@p');
-  const [activeTab, setActiveTab] = useState<'editor' | 'graph'>('editor');
+  const [activeTab, setActiveTab] = useState<'presets' | 'editor' | 'graph' | 'raw'>('editor');
   const [dialogueGraph, setDialogueGraph] = useState<DialogueGraph | null>(null);
+  const [dialogueSource, setDialogueSource] = useState<string>("");
+  const [rawLintErrors, setRawLintErrors] = useState<Array<{ line: number; message: string }>>([]);
   const dialogueFileInputRef = useRef<HTMLInputElement | null>(null);
   // Track last opened tellraw JSON file path for caching and hot reload (optional future use)
   const [lastTellrawFilePath, setLastTellrawFilePath] = useState<string | null>(() => {
     try { return window.localStorage.getItem('lastTellrawFilePath'); } catch { return null; }
   });
+  // Node name field (for labeling current editor context)
+  const [nodeName, setNodeName] = useState<string>(() => {
+    try {
+      const stored = window.localStorage.getItem('nodeName');
+      return stored && stored.trim() !== '' ? stored : 'unnamed';
+    } catch {
+      return 'unnamed';
+    }
+  });
+  const nodeNameInputRef = useRef<HTMLInputElement | null>(null);
+  const desiredCaretPositionRef = useRef<number | null>(null);
+  const sanitizeNodeName = useCallback((raw: string) => {
+    // Lowercase, spaces to underscore, remove invalid chars; allow a-z, 0-9, _
+    let v = (raw || '').toLowerCase();
+    v = v.replace(/\s+/g, '_');
+    v = v.replace(/[^a-z0-9_]+/g, '');
+    return v;
+  }, []);
+  useEffect(() => {
+    if (desiredCaretPositionRef.current != null && nodeNameInputRef.current) {
+      const element = nodeNameInputRef.current;
+      const position = Math.min(desiredCaretPositionRef.current, element.value.length);
+      try { element.setSelectionRange(position, position); } catch {}
+      desiredCaretPositionRef.current = null;
+    }
+  }, [nodeName]);
+  useEffect(() => {
+    try { window.localStorage.setItem('nodeName', nodeName); } catch {}
+  }, [nodeName]);
 
   // Helper function to safely update editor without triggering onChange loops
   const safeUpdateEditor = useCallback((operation: () => void) => {
@@ -231,6 +263,73 @@ const App: React.FC = () => {
     }
   };
 
+  // Serialize current styles block in the new RAW format shown by the user
+  const serializeStylesToRaw = (styles: DialogueGraph['styles']): string => {
+    const lines: string[] = [];
+    // Characters
+    const speakerEntries = Object.entries(styles?.speakers || {});
+    speakerEntries.forEach(([name, style], idx) => {
+      const nameStyle: any = (style as any)?.name || {};
+      const textStyle: any = (style as any)?.text || {
+        color: (style as any)?.color,
+        bold: (style as any)?.bold,
+        italic: (style as any)?.italic,
+        underline: (style as any)?.underline,
+        strikethrough: (style as any)?.strikethrough,
+      };
+      const parts: string[] = [];
+      parts.push(`character.${idx + 1}`);
+      parts.push(`name=${name}`);
+      if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
+      if (nameStyle?.bold) parts.push(`name_bold=true`);
+      if (nameStyle?.italic) parts.push(`name_italic=true`);
+      if (nameStyle?.underline) parts.push(`name_underline=true`);
+      if (nameStyle?.strikethrough) parts.push(`name_strikethrough=true`);
+      if (textStyle?.color) parts.push(`text_color=${textStyle.color}`);
+      if (textStyle?.bold) parts.push(`text_bold=true`);
+      if (textStyle?.italic) parts.push(`text_italic=true`);
+      if (textStyle?.underline) parts.push(`text_underline=true`);
+      if (textStyle?.strikethrough) parts.push(`text_strikethrough=true`);
+      lines.push(parts.join(' '));
+    });
+    if (speakerEntries.length > 0) lines.push("");
+    // Buttons
+    const buttonEntries = Object.entries(styles?.buttons || {});
+    buttonEntries.forEach(([id, style], idx) => {
+      const st: any = style as any;
+      const label = st?.label || id;
+      const parts: string[] = [];
+      parts.push(`button.${idx + 1}`);
+      parts.push(`label=${label}`);
+      if (st?.color) parts.push(`color=${st.color}`);
+      if (st?.bold) parts.push(`bold=true`);
+      if (st?.italic) parts.push(`italic=true`);
+      if (st?.underline) parts.push(`underline=true`);
+      if (st?.strikethrough) parts.push(`strikethrough=true`);
+      lines.push(parts.join(' '));
+    });
+    return lines.join('\n');
+  };
+
+  // Persist styles back into the raw dialogue file by replacing all character.X / button.X lines
+  const writeStylesToRawFile = async (styles: DialogueGraph['styles']) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+      if (!ipcRenderer) return;
+      const path = window.localStorage.getItem('lastDialogueFilePath');
+      if (!path) return;
+      const content: string = await ipcRenderer.invoke('read-file', path);
+      const lines = content.split(/\r?\n/);
+      const remaining = lines.filter(l => !/^\s*(character|button)\.\d+\s+/i.test(l.trim()));
+      const stylesBlock = serializeStylesToRaw(styles);
+      const newText = [stylesBlock, '', ...remaining].join('\n');
+      await ipcRenderer.invoke('write-file', path, newText);
+    } catch (err) {
+      console.warn('Failed to write styles to raw file:', err);
+    }
+  };
+
   // Open native file dialog for dialogue import (top-level toolbar)
   const handleOpenDialogueFile = useCallback(async () => {
     // Electron path
@@ -245,6 +344,7 @@ const App: React.FC = () => {
         try {
           const text: string = await ipcRenderer.invoke('read-file', filePath);
           const graph = parseDialogue(text);
+          setDialogueSource(text);
           try { window.localStorage.setItem('lastDialogueFilePath', filePath); } catch {}
           handleImportDialogue(graph, { autoSwitch: true });
           // Optional: start watching in Electron main (EditorContainer handles change events when mounted)
@@ -355,7 +455,7 @@ const App: React.FC = () => {
       console.log('✏️ Switching to editor mode');
     }
     
-    setActiveTab(value as 'editor' | 'graph');
+    setActiveTab(value as 'presets' | 'editor' | 'graph' | 'raw');
     console.log('🔄 Tab change complete. New activeTab:', value);
   };
 
@@ -365,8 +465,10 @@ const App: React.FC = () => {
       <div style={{ flex: '1 1 auto', minWidth: 0, background: 'var(--gray-a2)', display: 'flex', flexDirection: 'column', padding: '16px', overflow: 'auto' }}>
         <Tabs.Root value={activeTab} onValueChange={handleTabChange} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <Tabs.List>
+            <Tabs.Trigger value="presets">Presets</Tabs.Trigger>
             <Tabs.Trigger value="editor">Editor</Tabs.Trigger>
             <Tabs.Trigger value="graph">Graph</Tabs.Trigger>
+            <Tabs.Trigger value="raw">Raw</Tabs.Trigger>
           </Tabs.List>
           {/* Global toolbar: Dialogue import below tab picker (lighter background) */}
           <div
@@ -396,6 +498,7 @@ const App: React.FC = () => {
                 try {
                   const text = await file.text();
                   const graph = parseDialogue(text);
+                  setDialogueSource(text);
                   handleImportDialogue(graph, { autoSwitch: true });
                 } catch (err: any) {
                   alert('Failed to import dialogue: ' + (err?.message || String(err)));
@@ -408,6 +511,19 @@ const App: React.FC = () => {
           </div>
           
           <Box pt="3" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            {activeTab === 'presets' && (
+              <Tabs.Content value="presets" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <PresetsPanel
+                  onUseCommand={(cmd) => importJson(cmd)}
+                  graph={dialogueGraph}
+                  onUpdateStyles={(styles) => {
+                    setDialogueGraph(g => g ? { ...g, styles } : { styles, scenes: {} } as any);
+                    // Do not write to disk; RAW tab remains the source of truth
+                  }}
+                />
+              </Tabs.Content>
+            )}
+
             {activeTab === 'editor' && (
               <Tabs.Content value="editor" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <Slate key={slateKey} editor={editor} initialValue={value} onChange={onChange} onSelectionChange={handleSelectionChange}>
@@ -415,6 +531,81 @@ const App: React.FC = () => {
                     <Flex gap="4" style={{ flex: 1 }}>
                       <Sidebar segments={segments} segmentPaths={segmentPaths} activeSegmentIndex={activeSegmentIndex} />
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'auto' }}>
+                        <Card size="2" variant="surface">
+                          <Flex direction="column" gap="2">
+                            <Text size="2">Node name:</Text>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 0 }}>
+                              <Text style={{ lineHeight: 1, fontSize: '22px', fontWeight: 600 }}>@</Text>
+                              <span style={{ position: 'relative', display: 'inline-block' }}>
+                                <span
+                                  aria-hidden
+                                  style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    whiteSpace: 'pre',
+                                    fontSize: '22px',
+                                    fontWeight: 600,
+                                    color: 'var(--gray-a12)',
+                                    pointerEvents: 'none',
+                                  }}
+                                >
+                                  {nodeName.split('').map((ch, i) => (
+                                    ch === '_' ? (
+                                      <span key={i} style={{ color: 'var(--gray-a9)' }}>_</span>
+                                    ) : (
+                                      <span key={i}>{ch}</span>
+                                    )
+                                  ))}
+                                </span>
+                                <input
+                                  ref={nodeNameInputRef}
+                                  aria-label="Node name"
+                                  value={nodeName}
+                                  onChange={(e) => setNodeName(sanitizeNodeName(e.target.value))}
+                                onKeyDown={(e) => {
+                                  // Keep node title key handling isolated
+                                  e.stopPropagation();
+                                    if (e.key === ' ') {
+                                      e.preventDefault();
+                                      const element = nodeNameInputRef.current;
+                                      const currentValue = nodeName;
+                                      const selectionStart = element?.selectionStart ?? currentValue.length;
+                                      const selectionEnd = element?.selectionEnd ?? currentValue.length;
+                                      const nextRaw = currentValue.slice(0, selectionStart) + '_' + currentValue.slice(selectionEnd);
+                                      const next = sanitizeNodeName(nextRaw);
+                                      // Place caret after the inserted underscore
+                                      desiredCaretPositionRef.current = selectionStart + 1;
+                                      setNodeName(next);
+                                    }
+                                  }}
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                  onBlur={() => {
+                                    if (!nodeName || nodeName.trim() === '') setNodeName('unnamed');
+                                  }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    borderBottom: '1px solid var(--gray-a5)',
+                                    outline: 'none',
+                                    color: 'transparent',
+                                    caretColor: 'var(--gray-a12)',
+                                    fontSize: '22px',
+                                    fontWeight: 600,
+                                    padding: '2px 0',
+                                    marginLeft: 0,
+                                    width: 'auto',
+                                    minWidth: 0,
+                                    fontFamily: 'inherit'
+                                  }}
+                                  size={Math.max((nodeName?.length ?? 0), 7)}
+                                />
+                              </span>
+                            </div>
+                          </Flex>
+                        </Card>
                         <EditorContainer
                           tellrawJson={tellrawJson}
                           segments={segments}
@@ -429,6 +620,7 @@ const App: React.FC = () => {
                           target={target}
                           setTarget={setTarget}
                           onImportDialogue={handleImportDialogue}
+                          onDialogueSourceChange={(src) => setDialogueSource(src)}
                         />
                         <ActionsPanel
                           clickAction={clickAction}
@@ -451,11 +643,92 @@ const App: React.FC = () => {
             
             {activeTab === 'graph' && (
               <Tabs.Content value="graph" style={{ flex: 1 }}>
-                {dialogueGraph ? (
-                  <EnhancedConversationGraph graph={dialogueGraph} />
-                ) : (
-                  <GraphEditor segments={segments} />
-                )}
+                <EnhancedConversationGraph graph={dialogueGraph} />
+              </Tabs.Content>
+            )}
+
+            {activeTab === 'raw' && (
+              <Tabs.Content value="raw" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <Card size="2" variant="surface" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+                  <Text as="div" size="2">Edit dialogue.txt</Text>
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    <Editor
+                      value={dialogueSource}
+                      onValueChange={(code) => {
+                        setDialogueSource(code);
+                        // Simple lint: validate scene headers only; no auto-apply to graph
+                        const lines = code.split(/\r?\n/);
+                        const errs: Array<{ line: number; message: string }> = [];
+                        const sceneStart = /^@([A-Za-z0-9_\-]+)\s*$/;
+                        lines.forEach((line, idx) => {
+                          if (/^\s*@/.test(line) && !sceneStart.test(line.trim())) {
+                            errs.push({ line: idx + 1, message: 'Invalid node name. Use @name with letters, digits, _ or - only.' });
+                          }
+                        });
+                        setRawLintErrors(errs);
+                      }}
+                      highlight={(code) => {
+                        // Raw: minimal markup. Color scene headers, inline @refs, and brackets/braces
+                        const escapeHtml = (s: string) => s
+                          .replace(/&/g, '&amp;')
+                          .replace(/</g, '&lt;')
+                          .replace(/>/g, '&gt;');
+                        const colorize = (escapedLine: string) => {
+                          // [] in yellow (bracket), {} in pink (brace)
+                          let out = escapedLine.replace(/\[|\]/g, (m) => `<span style="color:${syntaxColors.bracket}">${m}</span>`);
+                          out = out.replace(/\{|\}/g, (m) => `<span style="color:${syntaxColors.brace}">${m}</span>`);
+                          // inline @name references
+                          out = out.replace(/@([A-Za-z0-9_\-]+)/g, (_m, p1) => `<span style="color:${syntaxColors.selector}">@${p1}</span>`);
+                          // arrows '->' (escaped as -&gt;)
+                          out = out.replace(/-&gt;/g, `<span style="color:${syntaxColors.punctuation}">-&gt;</span>`);
+                          return out;
+                        };
+                        return code
+                          .split(/\r?\n/)
+                          .map((line) => {
+                            const escaped = escapeHtml(line);
+                            if (/^\s*@/.test(line)) {
+                              return `<span class="token node_name_definition">${escaped}</span>`;
+                            }
+                            return colorize(escaped);
+                          })
+                          .join('\n');
+                      }}
+                      padding={12}
+                      style={{
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                        backgroundColor: 'var(--gray-a2)',
+                        color: 'white',
+                        border: '1px solid var(--gray-a6)',
+                        borderRadius: 6,
+                        minHeight: '280px',
+                        height: '100%',
+                        overflow: 'auto'
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px dashed var(--gray-a6)', paddingTop: 8 }}>
+                    {rawLintErrors.length > 0 ? (
+                      <div>
+                        <Text as="div" size="2" style={{ color: 'var(--red9)' }}>
+                          {rawLintErrors.length} problem{rawLintErrors.length === 1 ? '' : 's'}
+                        </Text>
+                      </div>
+                    ) : (
+                      <div />
+                    )}
+                    <div>
+                      <Button size="2" onClick={() => {
+                        try {
+                          const graph = parseDialogue(dialogueSource);
+                          setDialogueGraph(graph);
+                        } catch (err: any) {
+                          alert('Failed to parse dialogue: ' + (err?.message || String(err)));
+                        }
+                      }}>Apply to Graph</Button>
+                    </div>
+                  </div>
+                </Card>
               </Tabs.Content>
             )}
           </Box>

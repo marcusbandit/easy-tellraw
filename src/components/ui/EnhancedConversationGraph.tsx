@@ -154,6 +154,12 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   const animFrameRef = useRef<number | null>(null);
   const animRunningRef = useRef(false);
   const draggedIdsRef = useRef<Set<string>>(new Set());
+  // Snapshot of positions at drag start to freeze layout targets during drag
+  const frozenPosDuringDragRef = useRef<Record<string, { x: number; y: number }>>({});
+  // Tracks which currently dragged ids are roots (no parents)
+  const draggingRootIdsRef = useRef<Set<string>>(new Set());
+  // Roots that the user repositioned and should not drift back to center
+  const pinnedRootIdsRef = useRef<Set<string>>(new Set());
   const posRef = useRef<Record<string, { x: number; y: number }>>({});
   const velRef = useRef<Record<string, { vx: number; vy: number }>>({});
   const idleFramesRef = useRef<number>(0);
@@ -172,10 +178,10 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   const [initialViewport, setInitialViewport] = useState<{ x: number; y: number; zoom: number } | null>(null);
   // Ensure simulation doesn't start until cache (if any) is applied
   const [isLayoutHydrated, setIsLayoutHydrated] = useState<boolean>(false);
-  // Delay simulation start by 1s after entering graph view
+  // Small delay before starting simulation after entering graph view
   const [isSimDelayElapsed, setIsSimDelayElapsed] = useState<boolean>(false);
   useEffect(() => {
-    const timer = setTimeout(() => setIsSimDelayElapsed(true), 1000);
+    const timer = setTimeout(() => setIsSimDelayElapsed(true), 50);
     return () => clearTimeout(timer);
   }, []);
 
@@ -466,6 +472,26 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     // hydrate last known desired targets if present
     if (cache?.targets && typeof cache.targets === 'object') {
       desiredTargetsRef.current = cache.targets as Record<string, { x: number; y: number }>;
+    }
+    // If a node is an orphan (no incoming edges) and has a cached position, treat it as pinned
+    try {
+      const incoming: Record<string, number> = {};
+      (nextNodesInit as any[]).forEach((n: any) => { incoming[n.id] = 0; });
+      (layout.edges as any[]).forEach((e: any) => {
+        const t = String(e.target);
+        if (incoming[t] === undefined) incoming[t] = 0;
+        incoming[t] += 1;
+      });
+      Object.keys(incoming).forEach(id => {
+        if ((incoming[id] || 0) === 0) {
+          const cached = cachedPositions[id];
+          if (cached && typeof cached.x === 'number' && typeof cached.y === 'number') {
+            pinnedRootIdsRef.current.add(id);
+          }
+        }
+      });
+    } catch (_e) {
+      // ignore
     }
     // Mark hydration complete so simulation can start
     setIsLayoutHydrated(true);
@@ -1056,10 +1082,17 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
       for (const parentId of parents) {
         const childList = parentToChildren[parentId] || [];
         if (childList.length === 0) continue;
-        const parentPos = posRef.current[parentId];
+        // Prefer the parent's desired target center Y so children don't flicker when parent is moved
+        const desiredParentCenterY = desiredTargetsRef.current[parentId]?.y;
+        const parentPos = (() => {
+          const isDragged = draggedIdsRef.current.has(parentId);
+          const isRootDrag = draggingRootIdsRef.current.has(parentId);
+          if (isDragged && !isRootDrag) return frozenPosDuringDragRef.current[parentId] || posRef.current[parentId];
+          return posRef.current[parentId];
+        })();
         const parentH = dims[parentId]?.h ?? 0;
-        if (!parentPos) continue;
-        const parentCenterY = parentPos.y + parentH / 2;
+        if (!parentPos && typeof desiredParentCenterY !== 'number') continue;
+        const parentCenterY = typeof desiredParentCenterY === 'number' ? desiredParentCenterY : (parentPos!.y + parentH / 2);
 
         // Effective heights: always use TOTAL subtree heights for distribution
         const effectiveHeights: number[] = childList.map(cid => (
@@ -1253,11 +1286,17 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
           let desiredXSum = 0; let xCount = 0;
           let desiredYSum = 0; let yCount = 0;
           for (const srcId of incomers) {
-            const sp = posRef.current[srcId];
+            const srcDesiredCenterX = desiredTargetsRef.current[srcId]?.x;
+            const sp = (() => {
+              const isDragged = draggedIdsRef.current.has(srcId);
+              const isRootDrag = draggingRootIdsRef.current.has(srcId);
+              if (isDragged && !isRootDrag) return frozenPosDuringDragRef.current[srcId] || posRef.current[srcId];
+              return posRef.current[srcId];
+            })();
             const sw = dims[srcId]?.w ?? 0;
             const tw = dims[id]?.w ?? 0;
             if (!sp) continue;
-            const srcCenterX = sp.x + sw / 2;
+            const srcCenterX = typeof srcDesiredCenterX === 'number' ? srcDesiredCenterX : (sp.x + sw / 2);
             const linkForSrc = computeLinkDistanceForParent(srcId);
             const tgtDesiredCenterX = srcCenterX + sw / 2 + tw / 2 + linkForSrc;
             desiredXSum += tgtDesiredCenterX; xCount++;
@@ -1291,25 +1330,37 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
             frameMaxDelta = Math.max(frameMaxDelta, Math.abs(newX - p.x), Math.abs(newY - p.y));
             posRef.current[id] = { x: newX, y: newY };
           } else {
-            // roots gently drift toward center
+            // roots
             const dw = dims[id]?.w ?? 0;
             const dh = dims[id]?.h ?? 0;
             const curCenterX = p.x + dw / 2;
             const curCenterY = p.y + dh / 2;
-            // store desired target center for root as world center, converted to pane coordinates (persisted)
-            if (DEBUG_SHOW_TARGETS) {
-              const [tx, ty, tz] = transformRef.current || [0, 0, 1];
-              const paneX = (cx - tx) / tz;
-              const paneY = (cy - ty) / tz;
-              targetCentersRef.current[id] = { x: paneX, y: paneY };
-              desiredTargetsRef.current[id] = { x: paneX, y: paneY };
+            // If this root was pinned by user, keep where they placed it (no drift)
+            if (pinnedRootIdsRef.current.has(id)) {
+              // optionally expose target marker at current center when debugging
+              if (DEBUG_SHOW_TARGETS) {
+                const [tx, ty, tz] = transformRef.current || [0, 0, 1];
+                const paneX = (curCenterX - tx) / tz;
+                const paneY = (curCenterY - ty) / tz;
+                targetCentersRef.current[id] = { x: paneX, y: paneY };
+              }
+              // do not modify posRef.current[id]
+            } else {
+              // gently drift toward center for unpinned roots
+              if (DEBUG_SHOW_TARGETS) {
+                const [tx, ty, tz] = transformRef.current || [0, 0, 1];
+                const paneX = (cx - tx) / tz;
+                const paneY = (cy - ty) / tz;
+                targetCentersRef.current[id] = { x: paneX, y: paneY };
+                desiredTargetsRef.current[id] = { x: paneX, y: paneY };
+              }
+              const nx = curCenterX + (cx - curCenterX) * smoothingAlpha * 0.5;
+              const ny = curCenterY + (cy - curCenterY) * smoothingAlpha * 0.5;
+              const newX = nx - dw / 2;
+              const newY = ny - dh / 2;
+              frameMaxDelta = Math.max(frameMaxDelta, Math.abs(newX - p.x), Math.abs(newY - p.y));
+              posRef.current[id] = { x: newX, y: newY };
             }
-            const nx = curCenterX + (cx - curCenterX) * smoothingAlpha * 0.5;
-            const ny = curCenterY + (cy - curCenterY) * smoothingAlpha * 0.5;
-            const newX = nx - dw / 2;
-            const newY = ny - dh / 2;
-            frameMaxDelta = Math.max(frameMaxDelta, Math.abs(newX - p.x), Math.abs(newY - p.y));
-            posRef.current[id] = { x: newX, y: newY };
           }
         }
         // end per-node processing
@@ -1334,15 +1385,20 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     animFrameRef.current = requestAnimationFrame(step);
     return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; };
-  }, [graphNodes, edges, setGraphNodes, smoothingAlpha, worldCenter, simTick]);
+  }, [graphNodes, edges, setGraphNodes, smoothingAlpha, worldCenter, simTick, isLayoutHydrated, isSimDelayElapsed]);
 
   // Restart relaxation after a drag completes; provide smaller runs during drag
   const handleNodeDragStart = useCallback((_e: any, node: Node) => {
     draggedIdsRef.current.add(node.id);
+    // determine if node has parents (incoming edges)
+    const hasParents = (edges as any[]).some((e: any) => String(e.target) === node.id);
+    if (!hasParents) draggingRootIdsRef.current.add(node.id); else draggingRootIdsRef.current.delete(node.id);
+    // snapshot positions to freeze layout during non-root drags
+    frozenPosDuringDragRef.current = { ...posRef.current };
     // sync ref pos
     posRef.current[node.id] = { x: node.position.x, y: node.position.y };
     velRef.current[node.id] = { vx: 0, vy: 0 };
-  }, []);
+  }, [edges]);
 
   const handleNodeDrag = useCallback(() => {
     // do nothing during drag; user has priority
@@ -1350,11 +1406,22 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
 
   const handleNodeDragStop = useCallback((_e: any, node: Node) => {
     draggedIdsRef.current.delete(node.id);
+    const wasRootDrag = draggingRootIdsRef.current.has(node.id);
+    draggingRootIdsRef.current.delete(node.id);
+    // If user moved a root, pin it so it doesn't drift back
+    if (wasRootDrag) pinnedRootIdsRef.current.add(node.id);
+    // clear snapshot if no more drags
+    if (draggedIdsRef.current.size === 0) frozenPosDuringDragRef.current = {};
+    // Always accept current drop position as the starting point for smoothing back
     posRef.current[node.id] = { x: node.position.x, y: node.position.y };
     // kick the simulator to settle after a drag
     setSimTick(v => v + 1);
-    saveLayoutCache();
-  }, []);
+    // Only cache after root drag; non-root drags should not update saved positions
+    if (wasRootDrag) {
+      // Persist the orphan's new location immediately
+      saveLayoutCache();
+    }
+  }, [saveLayoutCache]);
 
   const displayNodes = useMemo(() => {
     if (!graphNodes) return [] as any[];

@@ -1,9 +1,30 @@
-export interface SpeakerStyle {
+export interface CharacterSubStyle {
   color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+}
+
+export interface SpeakerStyle {
+  // Preferred nested styles
+  name?: CharacterSubStyle;
+  text?: CharacterSubStyle;
+  // Backward-compat (legacy flat text style)
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
 }
 
 export interface ButtonStyle {
   color?: string;
+  label?: string; // default label for this preset
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
 }
 
 export interface DialogueStyles {

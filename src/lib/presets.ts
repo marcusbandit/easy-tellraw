@@ -40,4 +40,34 @@ export const presets: Preset[] = [
 # button2_command: Function to run when the second button is clicked.
 $tellraw @s [{"text":"$(text) ","color":"$(text_color)"},{"text":"[$(button1_text)]","color":"$(button1_color)","click_event":{"action":"run_command","command":"$(button1_command)"}},{"text":" ","color":"$(text_color)"},{"text":"[$(button2_text)]","color":"$(button2_color)","click_event":{"action":"run_command","command":"$(button2_command)"}}]`,
   },
+  {
+    id: 'text_line',
+    name: 'Text Line',
+    category: 'Node',
+    description: 'A simple line of text.',
+    parameters: [
+      { name: 'text', description: 'The line of text.' },
+      { name: 'text_color', description: 'Hex color code for the text.' },
+    ],
+    template: `# Preset: Text Line
+$tellraw @s [{"text":"$(text)","color":"$(text_color)"}]`,
+  },
+  {
+    id: 'narration_with_buttons',
+    name: 'Narration with 2 Buttons',
+    category: 'Node',
+    description: 'Narration line followed by two choice buttons.',
+    parameters: [
+      { name: 'narration', description: 'Narration text.' },
+      { name: 'narration_color', description: 'Hex color for narration.' },
+      { name: 'button1_text', description: 'First button label.' },
+      { name: 'button1_color', description: 'First button color.' },
+      { name: 'button1_command', description: 'First button command.' },
+      { name: 'button2_text', description: 'Second button label.' },
+      { name: 'button2_color', description: 'Second button color.' },
+      { name: 'button2_command', description: 'Second button command.' },
+    ],
+    template: `# Preset: Narration with 2 Buttons
+$tellraw @s [{"text":"$(narration) ","color":"$(narration_color)"},{"text":"[$(button1_text)]","color":"$(button1_color)","click_event":{"action":"run_command","command":"$(button1_command)"}},{"text":" ","color":"$(narration_color)"},{"text":"[$(button2_text)]","color":"$(button2_color)","click_event":{"action":"run_command","command":"$(button2_command)"}}]`,
+  },
 ]; 

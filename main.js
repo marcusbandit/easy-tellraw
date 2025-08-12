@@ -66,6 +66,8 @@ ipcMain.handle('read-file', async (_event, filePath) => {
   return data;
 });
 
+// NOTE: write-file handler removed per user request to avoid unintended writes
+
 // Start watching a file for changes
 ipcMain.on('watch-file', (event, filePath) => {
   const webContentsId = event.sender.id;

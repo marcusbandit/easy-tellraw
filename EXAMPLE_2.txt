@@ -1,49 +1,49 @@
 @styles
-speaker Jordan color=#56C0FF
-speaker Kara color=#FF6BAA
-speaker Guard color=#D0D0D0
-speaker Merchant color=#FFD580
-speaker Elder color=#A0FF9F
-speaker Thief color=#FF4F4F
-speaker Narrator color=#AAAAAA
+character.1 name=Jordan name_color=#b6a02F text_color=#56C0FF text_bold=true
+character.2 name=Kara name_color=#B04A7A text_color=#FF6BAA
+character.3 name=Guard name_color=#8C8C8C text_color=#D0D0D0
+character.4 name=Merchant name_color=#BFA040 text_color=#FFD580
+character.5 name=Elder name_color=#5FCF7F text_color=#A0FF9F
+character.6 name=Thief name_color=#B02F2F text_color=#FF4F4F
+character.7 name=Narrator name_color=#888888 text_color=#AAAAAA
 
-button.default color=#333333
-button.primary color=#2D6CDF
-button.danger color=#B00020
-button.success color=#28A745
-button.warning color=#FFC107
+button.1 label=default color=#333333
+button.2 label=primary color=#2D6CDF
+button.3 label=danger color=#B00020
+button.4 label=success color=#28A745
+button.5 label=warning color=#FFC107
 @endstyles
 
 @start
 Narrator: {italic}The wind howls through the empty streets...{/}
-Jordan: Kara, we need to decide. [Go to the market -> @market_entry]{class=primary} [Head to the guard tower -> @guard_tower_entry]{class=warning} [Check map -> ui:map/open]{color=#00FFC8}
-Kara: Or we could {bold}just{/} go home. [Go home -> @go_home]{class=danger}
+Jordan: Kara, we need to decide. [Go to the market -> @market_entry]{style=primary} [Head to the guard tower -> @guard_tower_entry]{style=warning} [Check map -> ui:map/open]{color=#00FFC8}
+Kara: Or we could {bold}just{/} go home. [Go home -> @go_home]{style=danger}
 
 @market_entry
-Merchant: Welcome! Care to browse? [Yes -> @market_browse]{class=primary} [No -> @market_leave]{class=danger}
+Merchant: Welcome! Care to browse? [Yes -> @market_browse]{style=primary} [No -> @market_leave]{style=danger}
 Jordan: {italic}I’m not sure we have time for this...{/}
 
 @market_browse
 Merchant: We have potions, weapons, and secrets.  
-[Buy potion -> shop:potions/buy_health]{class=success} [Buy sword -> shop:weapons/buy_sword]{class=success} [Buy shield -> shop:armor/buy_shield]{class=success} [Buy cloak -> shop:armor/buy_cloak]{class=success}
-[Buy lockpick -> shop:tools/buy_lockpick]{class=success} [Buy lantern -> shop:tools/buy_lantern]{class=success} [Buy map -> shop:tools/buy_map]{class=success} [Ask about rumors -> @market_rumors]
-[Buy chain -> shop:tools/buy_chain]{class=success}
-Kara: Or we could {color=#FF00FF}steal{/} something. [Steal -> @market_steal]{class=danger}
+[Buy potion -> shop:potions/buy_health]{style=success} [Buy sword -> shop:weapons/buy_sword]{style=success} [Buy shield -> shop:armor/buy_shield]{style=success} [Buy cloak -> shop:armor/buy_cloak]{style=success}
+[Buy lockpick -> shop:tools/buy_lockpick]{style=success} [Buy lantern -> shop:tools/buy_lantern]{style=success} [Buy map -> shop:tools/buy_map]{style=success} [Ask about rumors -> @market_rumors]
+[Buy chain -> shop:tools/buy_chain]{style=success}
+Kara: Or we could {color=#FF00FF}steal{/} something. [Steal -> @market_steal]{style=danger}
 Merchant: Anything else catch your eye?  
-[Buy rope -> shop:tools/buy_rope]{class=success} [Buy apple -> shop:food/buy_apple]{class=success} [Buy mysterious box -> shop:misc/buy_mystery_box]{class=warning} [Ask for discount -> @market_discount]
+[Buy rope -> shop:tools/buy_rope]{style=success} [Buy apple -> shop:food/buy_apple]{style=success} [Buy mysterious box -> shop:misc/buy_mystery_box]{style=warning} [Ask for discount -> @market_discount]
 
 @market_discount
-Merchant: For you, a special price! [Accept offer -> shop:apply_discount]{class=success} [Haggle more -> @market_haggle]{class=warning} [Decline -> @market_browse]
+Merchant: For you, a special price! [Accept offer -> shop:apply_discount]{style=success} [Haggle more -> @market_haggle]{style=warning} [Decline -> @market_browse]
 
 @market_haggle
-Merchant: Hmm... you drive a hard bargain. [Final offer -> shop:apply_final_discount]{class=success} [No thanks -> @market_browse]
+Merchant: Hmm... you drive a hard bargain. [Final offer -> shop:apply_final_discount]{style=success} [No thanks -> @market_browse]
 
 
 @market_rumors
 Merchant: They say the {bold}Elder{/} is hiding something in the forest. [Go to forest -> @forest_entry] [Back -> @market_browse]
 
 @market_steal
-Thief: {italic}Psst{/}, I saw that. Want in on a bigger job? [Yes -> @thief_job_offer]{class=primary} [No -> @market_browse]
+Thief: {italic}Psst{/}, I saw that. Want in on a bigger job? [Yes -> @thief_job_offer]{style=primary} [No -> @market_browse]
 
 @thief_job_offer
 Thief: Meet me at midnight by the docks. [Agree -> @docks_meet] [Refuse -> @market_browse]
@@ -53,7 +53,7 @@ Jordan: Let’s move on. [Go to forest -> @forest_entry] [Go to guard tower -> @
 
 @forest_entry
 Elder: Welcome, travelers. Do you seek wisdom or danger?  
-[Wisdom -> @forest_wisdom]{class=primary} [Danger -> @forest_danger]{class=danger} [Leave -> @market_entry]
+[Wisdom -> @forest_wisdom]{style=primary} [Danger -> @forest_danger]{style=danger} [Leave -> @market_entry]
 
 @forest_wisdom
 Elder: The path ahead is treacherous. {italic}Beware the red moon.{/} [Continue -> @forest_clearing] [Back -> @forest_entry]
@@ -85,7 +85,7 @@ Guard: Huh. Well, you’re here now. [Proceed -> @underground_chamber]
 
 @underground_chamber
 Narrator: The chamber glows with strange light.  
-[Touch crystal -> magic:crystal/activate]{class=primary} [Leave -> @underground_entry]
+[Touch crystal -> magic:crystal/activate]{style=primary} [Leave -> @underground_entry]
 
 @guard_tower_entry
 Guard: State your business. [Visit Kara’s friend -> @friend_visit] [Inspect tower -> @tower_interior] [Leave -> @market_entry]
@@ -97,7 +97,7 @@ Kara: My friend works here. [Talk -> @friend_talk] [Leave -> @guard_tower_entry]
 Friend: Good to see you! Need help? [Yes -> @friend_help] [No -> @friend_visit]
 
 @friend_help
-Friend: I can open the gate for you. [Open gate -> city:gate/open]{class=success} [Not now -> @friend_visit]
+Friend: I can open the gate for you. [Open gate -> city:gate/open]{style=success} [Not now -> @friend_visit]
 
 @tower_interior
 Narrator: The tower is old and dusty. [Climb -> @tower_top] [Leave -> @guard_tower_entry]
@@ -112,7 +112,7 @@ Kara: I see you! [Wave back -> @tower_top] [Ignore -> @tower_interior]
 Thief: You came. Ready? [Yes -> @docks_job] [No -> @market_entry]
 
 @docks_job
-Narrator: The job is risky. [Accept -> heist:docks/start]{class=primary} [Decline -> @market_entry]
+Narrator: The job is risky. [Accept -> heist:docks/start]{style=primary} [Decline -> @market_entry]
 
 @go_home
-Narrator: You return home. The adventure ends here. [Restart -> ui:game/restart]{class=danger}
+Narrator: You return home. The adventure ends here. [Restart -> ui:game/restart]{style=danger}

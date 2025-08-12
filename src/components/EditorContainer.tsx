@@ -24,6 +24,7 @@ interface EditorContainerProps {
   target: string;
   setTarget: (value: string) => void;
   onImportDialogue: (graph: DialogueGraph, opts?: { autoSwitch?: boolean }) => void;
+  onDialogueSourceChange?: (source: string) => void;
 }
 
 const EditorContainer: React.FC<EditorContainerProps> = ({
@@ -40,6 +41,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
   target,
   setTarget,
   onImportDialogue,
+  onDialogueSourceChange,
 }) => {
   const editor = useSlate();
   const [importInput, setImportInput] = useState('');
@@ -106,6 +108,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
       const text: string = await ipcRenderer.invoke('read-file', filePath);
       const graph = parseDialogue(text);
       onImportDialogue(graph, { autoSwitch });
+      try { onDialogueSourceChange?.(text); } catch {}
       if (persist) {
         try { window.localStorage.setItem('lastDialogueFilePath', filePath); } catch {}
       }

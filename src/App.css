@@ -61,3 +61,8 @@
   --default-font-family: 'minecraftiaregular' !important;
   --heading-font-family: 'minecraftiaregular' !important;
 } 
+
+/* Raw editor custom token */
+.token.node_name_definition {
+  color: #00d3d3; /* aqua */
+}
