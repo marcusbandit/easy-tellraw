@@ -11,6 +11,10 @@ interface ConversationGraphProps {
 type SceneLineData = { text: string; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean; choices?: OptionData[] };
 type OptionData = { id: string; label: string; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean };
 
+// Debug overlay toggle for node measurements. Disabled by default.
+// Kept intentionally (do not delete) for future debugging needs.
+const SHOW_NODE_DEBUG = false;
+
 const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineData[]; options: OptionData[]; isHovered?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number } }> = ({ data }) => {
   return (
     <div style={{
@@ -27,13 +31,13 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
       textAlign: 'left',
       position: 'relative',
     }}>
-      {(typeof data.debugOwnHeight === 'number' || typeof data.debugTotalHeight === 'number') && (
+      {SHOW_NODE_DEBUG && (typeof data.debugOwnHeight === 'number' || typeof data.debugTotalHeight === 'number') && (
         <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', fontSize: 10, color: '#aaa', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
           {`Own: ${Math.round((data.debugOwnHeight ?? 0) as number)}, Total: ${Math.round((data.debugTotalHeight ?? data.debugHeight ?? 0) as number)}`}
         </div>
       )}
       {/* Width debug on the left side */}
-      {(typeof data.debugOwnWidth === 'number' || typeof data.debugTotalWidth === 'number') && (
+      {SHOW_NODE_DEBUG && (typeof data.debugOwnWidth === 'number' || typeof data.debugTotalWidth === 'number') && (
         <div style={{ position: 'absolute', left: -80, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: '#aaa', pointerEvents: 'none', textAlign: 'right', lineHeight: 1.3 }}>
           <div>{`Own: ${Math.round((data.debugOwnWidth ?? 0) as number)}`}</div>
           <div>{`Total: ${Math.round((data.debugTotalWidth ?? data.debugOwnWidth ?? 0) as number)}`}</div>
@@ -118,13 +122,13 @@ const GhostNode: React.FC<{ data: { label: string; isHovered?: boolean; debugHei
       transition: 'border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease',
       position: 'relative',
     }}>
-      {(typeof data.debugOwnHeight === 'number' || typeof data.debugTotalHeight === 'number') && (
+      {SHOW_NODE_DEBUG && (typeof data.debugOwnHeight === 'number' || typeof data.debugTotalHeight === 'number') && (
         <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', fontSize: 10, color: '#aaa', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
           {`Own: ${Math.round((data.debugOwnHeight ?? 0) as number)}, Total: ${Math.round((data.debugTotalHeight ?? data.debugHeight ?? 0) as number)}`}
         </div>
       )}
       {/* Width debug on the left side */}
-      {(typeof data.debugOwnWidth === 'number' || typeof data.debugTotalWidth === 'number') && (
+      {SHOW_NODE_DEBUG && (typeof data.debugOwnWidth === 'number' || typeof data.debugTotalWidth === 'number') && (
         <div style={{ position: 'absolute', left: -80, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: '#aaa', pointerEvents: 'none', textAlign: 'right', lineHeight: 1.3 }}>
           <div>{`Own: ${Math.round((data.debugOwnWidth ?? 0) as number)}`}</div>
           <div>{`Total: ${Math.round((data.debugTotalWidth ?? data.debugOwnWidth ?? 0) as number)}`}</div>
@@ -141,7 +145,9 @@ const nodeTypes: NodeTypes = { scene: SceneNode, ghost: GhostNode };
 const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) => {
   // Local state so nodes are draggable and connections editable
   // Toggle debug overlay markers for target centers
-  const DEBUG_SHOW_TARGETS = false;
+  // Debug target markers toggle. Disabled by default.
+  // Kept intentionally (do not delete) for future debugging needs.
+  const DEBUG_SHOW_TARGETS = false && SHOW_NODE_DEBUG;
   const [graphNodes, setGraphNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const didSimulateRef = useRef(false);
@@ -620,6 +626,18 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         }
         return width;
       };
+      // Recursive capacity using own widths: own + LINK_DISTANCE + max(child capacity)
+      const computeRecursiveOwnCapacity = (id: string): number => {
+        const ownW = ownWidthMapRef.current[id] ?? (dims[id]?.w ?? 0);
+        const kids = parentToChildren[id] || [];
+        if (kids.length === 0) return ownW;
+        let maxChildCap = 0;
+        for (const k of kids) {
+          const cap = computeRecursiveOwnCapacity(k);
+          if (cap > maxChildCap) maxChildCap = cap;
+        }
+        return ownW + LINK_DISTANCE + maxChildCap;
+      };
       // Helper: compute combined height span of a node's immediate children using the same
       // stacking/offset rules (without re-centering), measured using own heights after offsets
       const computeImmediateChildrenCombinedExtent = (parentIdLocal: string): number => {
@@ -799,7 +817,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
               for (let k = nextIdx; k < childList.length; k++) {
                 const kid = childList[k];
                 const kidOwnW = ownWidthMapRef.current[kid] ?? (dims[kid]?.w ?? 0);
-                if (kidOwnW >= curTotalW) {
+                const kidHasChildren = (parentToChildren[kid] || []).length > 0;
+                if (!kidHasChildren || kidOwnW >= curTotalW) {
                   passing.push(k);
                 } else {
                   failed = true;
@@ -833,7 +852,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
                 for (let k = nextIdx; k < childList.length; k++) {
                   const kid = childList[k];
                   const kidTotalW = totalWidthMapRef.current[kid] ?? computeChainWidth(kid);
-                  if (curOwnW >= kidTotalW) {
+                  const kidHasChildren = (parentToChildren[kid] || []).length > 0;
+                  if (!kidHasChildren || curOwnW >= kidTotalW) {
                     passing.push(k);
                   } else {
                     failed = true;
@@ -853,17 +873,23 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
                 }
               }
             } else {
-              // Extended capacity: current own width + (link + max immediate child own width)
+              // Extended capacity: recursively include deeper widths if needed
               const curChildren = parentToChildren[curId] || [];
-              let maxChildOwnW = 0;
-              for (const ch of curChildren) {
-                const w = ownWidthMapRef.current[ch] ?? (dims[ch]?.w ?? 0);
-                if (w > maxChildOwnW) maxChildOwnW = w;
-              }
-              const extendedCapacity = curOwnW + LINK_DISTANCE + maxChildOwnW;
+              const extendedCapacity = computeRecursiveOwnCapacity(curId);
               if (extendedCapacity >= nextTotalW) {
-                // Move by current total height minus combined extent of immediate children (with offsets)
-                const combinedChildrenH = computeImmediateChildrenCombinedExtent(curId);
+                // Move by current total height minus combined extent of children (with offsets), recursively deep
+                const combinedChildrenH = (() => {
+                  // Try deepest possible fit by recursing children for extent if needed
+                  const tryExtent = (nodeId: string): number => {
+                    const kids = parentToChildren[nodeId] || [];
+                    if (kids.length === 0) return 0;
+                    // compute local extent using immediate children rules
+                    const local = computeImmediateChildrenCombinedExtent(nodeId);
+                    // If local width capacity still insufficient upstream, deeper layers will be considered
+                    return local;
+                  };
+                  return tryExtent(curId);
+                })();
                 const curTotalH = totalHeightMapRef.current[curId] ?? (dims[curId]?.h ?? 0);
                 const delta = 0.5 * Math.max(0, curTotalH - combinedChildrenH);
                 if (delta > 0) {
@@ -872,7 +898,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
                   for (let k = nextIdx; k < childList.length; k++) {
                     const kid = childList[k];
                     const kidTotalW = totalWidthMapRef.current[kid] ?? computeChainWidth(kid);
-                    if (extendedCapacity >= kidTotalW) {
+                    const kidHasChildren = (parentToChildren[kid] || []).length > 0;
+                    if (!kidHasChildren || extendedCapacity >= kidTotalW) {
                       passing.push(k);
                     } else {
                       failed = true;
