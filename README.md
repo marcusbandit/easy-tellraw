@@ -1,46 +1,91 @@
-# Getting Started with Create React App
+# Stylized Tellraw Editor (Easy Tellraw)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React + Electron editor for crafting Minecraft /tellraw JSON with live preview, rich-text styling, click/hover actions, and an optional dialogue graph workflow.
 
-## Available Scripts
+## Highlights
 
-In the project directory, you can run:
+- **Rich text editor**: Bold, italic, underline, strikethrough, obfuscated; custom colors; selection-aware editing.
+- **Actions**: Configure click events (run/suggest command, open URL, copy to clipboard) and hover text per segment or selection.
+- **Live Tellraw output**: Pretty/compact views, target selector (`@p`, `@s`, `@a`), and segment highlighting in JSON.
+- **Import**: Paste a full `/tellraw` command or just the JSON array; auto-detects selector and updates UI.
+- **Dialogue**: Import a plain-text dialogue file to visualize/edit via an interactive graph.
+- **Electron**: Native file dialog, optional file watching for hot-reload of dialogue files.
 
-### `npm start`
+### Screens and Workflow
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- **Editor tab**
+  - Type in the main area; use keyboard shortcuts or the Actions panel to style and attach events.
+  - The output panel shows the live command. Toggle Collapse/Expand for compact vs pretty JSON.
+  - Use the target selector to switch the command target dynamically.
+  - Buttons: Import Tellraw Command (with JSON syntax highlighting), Copy Tellraw Command, Reset Tellraw.
+- **Graph tab**
+  - When a dialogue file is imported, the enhanced conversation graph (`EnhancedConversationGraph`) is shown.
+  - Without a dialogue file, a segment-based graph editor (`GraphEditor`) is available.
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+### Dialogue Format
 
-### `npm test`
+Keep the cheat sheet handy while writing dialogue files:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+- See `docs/Dialogue-Cheat-Sheet.md` for the full spec.
+- Core ideas:
+  - Optional `@styles` block for defaults (speakers, button classes).
+  - Nodes declared with `@node_name`; lines until the next node.
+  - Buttons like `[Yes -> @next_node]` or `[Open Map -> ui:map/open]` with optional style overrides.
+  - Inline text styling: `{bold}text{/}`, `{italic}text{/}`, `{color=#HEX}text{/}`.
 
-### `npm run build`
+### Keyboard Shortcuts
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- Ctrl+B: bold
+- Ctrl+I: italic
+- Ctrl+U: underline
+- Ctrl+Shift+S: strikethrough
+- Ctrl+Shift+O: obfuscated
+- Double-click: select word; Triple-click: select entire line
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Color Mapping Notes
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+The JSON preview replaces common hex codes with Minecraft color names when possible (e.g., `#ffaa00` → `gold`).
 
-### `npm run eject`
+### Scripts
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+Defined in `package.json`:
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+- `start`: Runs CRA dev server and Electron together (via `concurrently`).
+- `react-start`: Runs CRA dev server (browser-only).
+- `build`: Builds the React app (CRA).
+- `dist`: Packages the Electron app (electron-builder: Windows NSIS/zip; Linux AppImage/deb).
+- `test`: Runs CRA tests.
+- `eject`: Ejects CRA config.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+### Tech Stack
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+- React 18, TypeScript
+- Slate.js for rich text (`slate`, `slate-react`, `slate-history`)
+- Radix UI (`@radix-ui/themes`, `@radix-ui/react-*`)
+- Electron + electron-builder
+- PrismJS for JSON highlighting
+- React Flow for graphs
 
-## Learn More
+### Project Structure (select files)
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+- `src/App.tsx`: App shell; editor/graph tabs; import handlers; state wiring.
+- `src/components/EditorContainer.tsx`: Slate editor, import dialog, output panel, copy/reset.
+- `src/components/ActionsPanel.tsx`: Click/hover action controls bound to selection/segments.
+- `src/components/JsonOutput.tsx`: Live Tellraw string with syntax highlighting and target selector.
+- `src/hooks/useTellrawSegments.ts`: Parses Slate value into Tellraw segments and paths.
+- `src/components/ui/GraphEditor.tsx` and `EnhancedConversationGraph.tsx`: Graph UIs.
+- `docs/Dialogue-Cheat-Sheet.md`: Dialogue authoring reference.
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Electron Notes
+
+- File import uses IPC (`open-file-dialog`, `read-file`).
+- Dialogue files can be watched for changes (`watch-file`/`unwatch-file`), enabling hot reload.
+- In browsers, a hidden `<input type="file">` is used as a fallback.
+
+### Presets
+
+- Example function files live under `public/presets/`.
+
+### Disclaimer
+
+This project started on Create React App, but the README reflects the current Electron + Slate + Radix toolchain and custom features for Tellraw authoring and dialogue graphs.
