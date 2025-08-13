@@ -50,17 +50,10 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   React.useEffect(() => {
     // Skip if we're already updating to prevent infinite loops
     if (isUpdatingRef.current) {
-      console.log('🎯 Skipping ActionsPanel update - already updating');
       return;
     }
     
-    console.log('🎯 ActionsPanel useEffect triggered:', {
-      clickAction,
-      clickValue,
-      activeSegmentIndex,
-      hasSelection: !!editor.selection,
-      selectionCollapsed: editor.selection ? Range.isCollapsed(editor.selection) : null
-    });
+    // removed noisy log
     
     try {
       isUpdatingRef.current = true;
@@ -76,10 +69,8 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
             ? { action: clickAction, url: v }
             : { action: clickAction, command: v };
       
-      console.log('🎯 Built event object:', eventObj);
       
       if (sel && !Range.isCollapsed(sel)) {
-        console.log('🎯 Applying to selection range');
         Transforms.setNodes(
           editor,
           { click_event: eventObj } as any,
@@ -87,30 +78,25 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         );
       } else if (segmentPaths && activeSegmentIndex != null) {
         const path = segmentPaths[activeSegmentIndex] || undefined;
-        console.log('🎯 Applying to segment path:', path, 'index:', activeSegmentIndex);
         if (path) {
           // Check if the path exists before trying to set nodes
           try {
             const node = SlateEditor.node(editor, path);
             if (node) {
-              console.log('🎯 Path exists, applying click_event');
               Transforms.setNodes(
                 editor,
                 { click_event: eventObj } as any,
                 { at: path }
               );
             } else {
-              console.log('🎯 Path exists but node is null');
             }
           } catch (error) {
             // Path doesn't exist, ignore the error
             console.warn('🎯 Path not found for segment:', path, error);
           }
         } else {
-          console.log('🎯 No path found for active segment');
         }
       } else {
-        console.log('🎯 No selection or active segment to apply to');
       }
     } catch (error) {
       console.warn('🎯 Error updating click event:', error);

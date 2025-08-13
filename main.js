@@ -66,7 +66,11 @@ ipcMain.handle('read-file', async (_event, filePath) => {
   return data;
 });
 
-// NOTE: write-file handler removed per user request to avoid unintended writes
+// Write file content (invoked explicitly from renderer)
+ipcMain.handle('write-file', async (_event, filePath, content) => {
+  await fs.promises.writeFile(filePath, content, 'utf-8');
+  return true;
+});
 
 // Start watching a file for changes
 ipcMain.on('watch-file', (event, filePath) => {

@@ -2,19 +2,21 @@ import { DialogueGraph, DialogueScene, DialogueStyles, DialogueLine, DialogueCho
 
 const STYLE_SECTION_START = /^@styles\s*$/i;
 const STYLE_SECTION_END = /^@endstyles\s*$/i;
-const SCENE_START = /^@([A-Za-z0-9_\-]+)\s*$/;
+const SCENE_START = /^@([A-Za-z0-9_-]+)\s*$/;
 
 // Legacy styles inside @styles ... @endstyles
 // Matches e.g. "speaker Jordan color=#56C0FF" or "button.primary color=#2D6CDF"
-const STYLE_LINE = /^(speaker\s+([A-Za-z0-9_\-]+)|button\.([A-Za-z0-9_\-]+))\s+color=([#A-Fa-f0-9]{3,8})\s*$/;
+const STYLE_LINE = /^(speaker\s+([A-Za-z0-9_-]+)|button\.([A-Za-z0-9_-]+))\s+color=([#A-Fa-f0-9]{3,8})\s*$/;
 
 // New RAW styles format (outside or inside styles):
 // character.1 name=Jordan name_color=#b6a02F text_color=#56C0FF text_bold=true
 // button.1 label=default color=#333333 bold=true
 // style.primary color=#ff00ff bold=true italic=true
-const CHARACTER_STYLE_LINE = /^character\.(\d+)\s+(.+)$/i;
-const BUTTON_STYLE_LINE = /^button\.(\d+)\s+(.+)$/i;
-const NAMED_STYLE_LINE = /^style\.([A-Za-z0-9_\-]+)\s+(.+)$/i;
+const CHARACTER_STYLE_NUM_LINE = /^character\.(\d+)\s+(.+)$/i;
+const CHARACTER_STYLE_NAME_LINE = /^character\.([A-Za-z0-9_-]+)\s+(.+)$/i;
+const BUTTON_STYLE_NUM_LINE = /^button\.(\d+)\s+(.+)$/i;
+const BUTTON_STYLE_NAME_LINE = /^button\.([A-Za-z0-9_-]+)\s+(.+)$/i;
+const NAMED_STYLE_LINE = /^style\.([A-Za-z0-9_-]+)\s+(.+)$/i;
 
 function parseKeyValueProps(props: string): Record<string, string> {
   const result: Record<string, string> = {};
@@ -32,11 +34,11 @@ function parseKeyValueProps(props: string): Record<string, string> {
 }
 
 // Matches tags line like "#intro #gate"
-const TAGS_LINE = /^(?:#[A-Za-z0-9_\-]+\s*)+$/;
+const TAGS_LINE = /^(?:#[A-Za-z0-9_-]+\s*)+$/;
 
 // Matches a dialogue line like "Jordan: Hello ..." or with inline style after speaker
 // e.g., "Jordan{color=#FFD700 bold}: ..."
-const DIALOGUE_PREFIX = /^([A-Za-z0-9_\-]+)(\{[^}]*\})?\s*:\s*(.*)$/;
+const DIALOGUE_PREFIX = /^([A-Za-z0-9_-]+)(\{[^}]*\})?\s*:\s*(.*)$/;
 
 // Matches a choice like "[Yes -> @save_kara]{class=primary color=#FF0000 bold}"
 const CHOICE_WITH_META = /\[([^\]]+?)\s*->\s*([^\]]+?)\](?:\{([^}]*)\})?/g;
@@ -66,7 +68,29 @@ export function parseDialogue(source: string): DialogueGraph {
 
     // New RAW style lines (load regardless of styles section)
     let mm: RegExpMatchArray | null;
-    if ((mm = line.match(CHARACTER_STYLE_LINE))) {
+    if ((mm = line.match(CHARACTER_STYLE_NAME_LINE))) {
+      const props = parseKeyValueProps(mm[2]);
+      const name = mm[1] || props['name'];
+      if (name) {
+        const style: any = styles.speakers[name] || {};
+        const nameStyle: any = style.name || {};
+        const textStyle: any = style.text || {};
+        if (props['name_color']) nameStyle.color = props['name_color'];
+        if (props['name_bold'] === 'true') nameStyle.bold = true;
+        if (props['name_italic'] === 'true') nameStyle.italic = true;
+        if (props['name_underline'] === 'true') nameStyle.underline = true;
+        if (props['name_strikethrough'] === 'true') nameStyle.strikethrough = true;
+        if (props['text_color']) textStyle.color = props['text_color'];
+        if (props['text_bold'] === 'true') textStyle.bold = true;
+        if (props['text_italic'] === 'true') textStyle.italic = true;
+        if (props['text_underline'] === 'true') textStyle.underline = true;
+        if (props['text_strikethrough'] === 'true') textStyle.strikethrough = true;
+        const merged: SpeakerStyle = { name: nameStyle, text: textStyle } as any;
+        styles.speakers[name] = merged;
+      }
+      continue;
+    }
+    if ((mm = line.match(CHARACTER_STYLE_NUM_LINE))) {
       const props = parseKeyValueProps(mm[2]);
       const name = props['name'];
       if (name) {
@@ -88,7 +112,21 @@ export function parseDialogue(source: string): DialogueGraph {
       }
       continue;
     }
-    if ((mm = line.match(BUTTON_STYLE_LINE))) {
+    if ((mm = line.match(BUTTON_STYLE_NAME_LINE))) {
+      const props = parseKeyValueProps(mm[2]);
+      const id = mm[1];
+      const label = props['label'] || id;
+      const cur: any = styles.buttons[id] || {};
+      if (props['color']) cur.color = props['color'];
+      if (props['bold'] === 'true') cur.bold = true;
+      if (props['italic'] === 'true') cur.italic = true;
+      if (props['underline'] === 'true') cur.underline = true;
+      if (props['strikethrough'] === 'true') cur.strikethrough = true;
+      if (label) cur.label = label;
+      styles.buttons[id] = cur;
+      continue;
+    }
+    if ((mm = line.match(BUTTON_STYLE_NUM_LINE))) {
       const props = parseKeyValueProps(mm[2]);
       const label = props['label'];
       const idx = mm[1];
@@ -176,7 +214,7 @@ export function parseDialogue(source: string): DialogueGraph {
       const choice: DialogueChoice = { text: label.trim(), target: target.trim() };
       if (meta) {
         const colorMatch = /(?:^|\s)color\s*=\s*([#A-Fa-f0-9]{3,8})/.exec(meta);
-        const classMatch = /(?:^|\s)class\s*=\s*([A-Za-z0-9_\-]+)/.exec(meta);
+        const classMatch = /(?:^|\s)class\s*=\s*([A-Za-z0-9_-]+)/.exec(meta);
         choice.color = colorMatch?.[1];
         if (classMatch) choice.className = classMatch[1];
         choice.bold = /(?:^|\s)bold(?:\s|$)/.test(meta);

@@ -1,6 +1,6 @@
 @styles
 style.normal color=#f70000
-character.Jordan name_color=#b6a02F text_color=#56C0FF text_bold=true
+character.Jordan name_color=#AA0000 text_color=#56C0FF text_bold=true
 character.Kara name_color=#B04A7A text_color=#FF6BAA
 character.Guard name_color=#8C8C8C text_color=#D0D0D0
 character.Merchant name_color=#BFA040 text_color=#FFD580

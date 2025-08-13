@@ -1,7 +1,7 @@
 import React from 'react';
-import { Card, Flex, Heading, Text, TextField, Select, Button, SegmentedControl, Separator, Badge, Popover } from '@radix-ui/themes';
+import { Card, Flex, Heading, Text, TextField, Button, Separator, Popover } from '@radix-ui/themes';
 import { HexColorPicker } from 'react-colorful';
-import { presets as PRESETS, Preset } from '../lib/presets';
+import { Preset } from '../lib/presets';
 import { quotes } from '../lib/quotes';
 import { DialogueGraph } from '../types/dialogue';
 
@@ -27,10 +27,6 @@ const buildCommandFromPreset = (preset: Preset, params: ParamValues, target: str
 };
 
 const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpdateStyles, onRequestRawUpdate }) => {
-  const [selectedId, setSelectedId] = React.useState<string>('');
-  const current = null as any;
-  const characterPresets: any[] = [];
-  const buttonPresets: any[] = [];
 
   // Editable button style state (saved into graph.styles.buttons)
   const [buttonStyles, setButtonStyles] = React.useState(() => graph?.styles?.buttons ?? {});
@@ -49,8 +45,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
         const nameStyle = style?.name || {};
         const textStyle = style?.text || {};
         const parts: string[] = [];
-        parts.push(`character.${idx + 1}`);
-        parts.push(`name=${name}`);
+        parts.push(`character.${name}`);
         if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
         if (nameStyle?.bold) parts.push(`name_bold=true`);
         if (nameStyle?.italic) parts.push(`name_italic=true`);
@@ -65,11 +60,9 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
       });
       if (Object.keys(nextSpeakers || {}).length > 0) lines.push('');
       // Buttons
-      Object.entries(nextButtons || {}).forEach(([id, st]: any, idx) => {
-        const parts: string[] = [];
+      Object.entries(nextButtons || {}).forEach(([id, st]: any) => {
         const label = st?.label || id;
-        parts.push(`button.${idx + 1}`);
-        parts.push(`label=${label}`);
+        const parts: string[] = [`button.${label}`];
         if (st?.color) parts.push(`color=${st.color}`);
         if (st?.bold) parts.push(`bold=true`);
         if (st?.italic) parts.push(`italic=true`);
@@ -198,7 +191,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
       persistStyles(next, speakerStyles);
     }
   }, [selectedButtonId]);
-  const [target, setTarget] = React.useState<string>('@p');
+  // Removed unused target state; PresetsPanel delegates command usage upward
 
   return (
     <Card size="2" variant="surface">
@@ -240,7 +233,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                           Object.entries(speakerStyles || {}).forEach(([name, style]: any, idx) => {
                             const nameStyle = style?.name || {};
                             const textStyle = style?.text || {};
-                            const parts: string[] = [`character.${idx + 1}`, `name=${name}`];
+                            const parts: string[] = [`character.${name}`];
                             if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
                             if (nameStyle?.bold) parts.push(`name_bold=true`);
                             if (nameStyle?.italic) parts.push(`name_italic=true`);

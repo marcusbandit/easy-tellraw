@@ -8,7 +8,7 @@ import EditorContainer from "./components/EditorContainer";
 import ActionsPanel from "./components/ActionsPanel";
 import EnhancedConversationGraph from "./components/ui/EnhancedConversationGraph";
 import { useTellrawSegments } from "./hooks/useTellrawSegments";
-import { Flex, Tabs, Box, Button, Card, Text } from "@radix-ui/themes";
+import { Flex, Tabs, Box, Button, Card, Text, AlertDialog } from "@radix-ui/themes";
 import PresetsPanel from "./components/PresetsPanel";
 import { Slate, withReact } from "slate-react";
 import { withHistory } from "slate-history";
@@ -16,8 +16,7 @@ import { Transforms } from "slate";
 import { flattenSlateFragmentToCharSegments, squashAdjacentSegments } from "./lib/segments";
 import { DialogueGraph } from "./types/dialogue";
 import { parseDialogue } from "./lib/dialogueParser";
-import { syntaxColors } from "./syntaxColors";
-import Editor from "react-simple-code-editor";
+import RawTab from "./components/tabs/RawTab";
 
 const App: React.FC = () => {
   // State for Slate content and remount key
@@ -49,15 +48,24 @@ const App: React.FC = () => {
   const isProgrammaticUpdateRef = useRef<boolean>(false);
   // Tellraw target selector state
   const [target, setTarget] = useState<string>('@p');
-  const [activeTab, setActiveTab] = useState<'presets' | 'editor' | 'graph' | 'raw'>('editor');
+  const [activeTab, setActiveTab] = useState<'presets' | 'editor' | 'graph' | 'raw'>(() => {
+    try {
+      const stored = window.localStorage.getItem('lastActiveTab');
+      if (stored === 'presets' || stored === 'editor' || stored === 'graph' || stored === 'raw') return stored;
+    } catch {}
+    return 'editor';
+  });
   const [dialogueGraph, setDialogueGraph] = useState<DialogueGraph | null>(null);
   const [dialogueSource, setDialogueSource] = useState<string>("");
   const [rawLintErrors, setRawLintErrors] = useState<Array<{ line: number; message: string }>>([]);
   const dialogueFileInputRef = useRef<HTMLInputElement | null>(null);
   // Track last opened tellraw JSON file path for caching and hot reload (optional future use)
-  const [lastTellrawFilePath, setLastTellrawFilePath] = useState<string | null>(() => {
-    try { return window.localStorage.getItem('lastTellrawFilePath'); } catch { return null; }
-  });
+  // Removed unused lastTellrawFilePath state
+  // Import confirmation dialog state
+  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+  const pendingImportRef = useRef<null | (
+    { kind: 'electron'; path: string } | { kind: 'browser'; file: File }
+  )>(null);
   // Node name field (for labeling current editor context)
   const [nodeName, setNodeName] = useState<string>(() => {
     try {
@@ -88,18 +96,7 @@ const App: React.FC = () => {
     try { window.localStorage.setItem('nodeName', nodeName); } catch {}
   }, [nodeName]);
 
-  // Helper function to safely update editor without triggering onChange loops
-  const safeUpdateEditor = useCallback((operation: () => void) => {
-    isProgrammaticUpdateRef.current = true;
-    try {
-      operation();
-    } finally {
-      // Reset the flag after a short delay
-      setTimeout(() => {
-        isProgrammaticUpdateRef.current = false;
-      }, 10);
-    }
-  }, []);
+  // Removed unused safeUpdateEditor helper
 
   // Sync click and hover state when active segment changes
   useEffect(() => {
@@ -135,11 +132,9 @@ const App: React.FC = () => {
   const onChange = (val: Descendant[]) => {
     // Skip if this is a programmatic update to prevent infinite loops
     if (isProgrammaticUpdateRef.current) {
-      console.log('📝 Skipping onChange - programmatic update');
       return;
     }
     
-    console.log('📝 onChange triggered - segments count:', val.length);
     setValue(val);
     window.localStorage.setItem('editorValue', JSON.stringify(val));
     
@@ -147,22 +142,18 @@ const App: React.FC = () => {
     const now = Date.now();
     const sel = editor.selection ?? lastSelection;
     if (sel && !Range.isCollapsed(sel) && now - lastRecalcTimeRef.current > 100) {
-      console.log('🔄 Recalculating split JSON - selection:', sel);
       lastRecalcTimeRef.current = now;
       const frag = SlateEditor.fragment(editor, sel as any);
-      console.log('📦 Setting marked segments:', frag.length, 'items');
       setMarkedSegs(squashAdjacentSegments(flattenSlateFragmentToCharSegments(frag)) as any[]);
       const start = SlateEditor.start(editor, []);
       const end = SlateEditor.end(editor, []);
       const beforeFrag = SlateEditor.fragment(editor, { anchor: start, focus: Range.start(sel) } as any);
       const afterFrag = SlateEditor.fragment(editor, { anchor: Range.end(sel), focus: end } as any);
-      console.log('📦 Setting before/after segments');
       setBeforeSegs(squashAdjacentSegments(flattenSlateFragmentToCharSegments(beforeFrag)) as any[]);
       setAfterSegs(squashAdjacentSegments(flattenSlateFragmentToCharSegments(afterFrag)) as any[]);
     } else {
       // Clear split JSON when selection is collapsed or no marking
       if (beforeSegs || markedSegs || afterSegs) {
-        console.log('🗑️ Clearing split JSON - selection collapsed or no marking');
         setBeforeSegs(null);
         setMarkedSegs(null);
         setAfterSegs(null);
@@ -172,10 +163,8 @@ const App: React.FC = () => {
 
   // Map current Slate selection to segment index, treating offset=0 as previous segment
   const handleSelectionChange = (sel: any) => {
-    console.log('🎯 Selection change:', sel ? 'has selection' : 'no selection');
     
     if (!sel) {
-      console.log('🗑️ No selection - clearing active segment');
       setActiveSegmentIndex(null);
       // clear split JSON
       setBeforeSegs(null);
@@ -186,10 +175,8 @@ const App: React.FC = () => {
     
     // Only save non-collapsed selections so highlights persist when cursor moves
     const isCollapsed = Range.isCollapsed(sel);
-    console.log('🎯 Selection collapsed:', isCollapsed);
     
     if (!isCollapsed) {
-      console.log('📌 Saving non-collapsed selection');
       setLastSelection(sel);
     }
     
@@ -198,9 +185,7 @@ const App: React.FC = () => {
     let newIndex: number | null = null;
     if (idx >= 0) {
       newIndex = offset === 0 ? (idx > 0 ? idx - 1 : 0) : idx;
-      console.log('🎯 Found segment index:', idx, '-> newIndex:', newIndex, 'offset:', offset);
     } else {
-      console.log('🎯 No matching segment found for path:', path);
     }
     
     setActiveSegmentIndex(newIndex);
@@ -208,7 +193,6 @@ const App: React.FC = () => {
     // Clear split JSON when selection is collapsed or moves without a marked range
     if (isCollapsed) {
       // Clear persistent highlight when cursor collapses (click without marking)
-      console.log('🗑️ Selection collapsed - clearing highlights');
       setLastSelection(null);
       setBeforeSegs(null);
       setMarkedSegs(null);
@@ -256,73 +240,11 @@ const App: React.FC = () => {
     navigator.clipboard.writeText(collapsed);
   };
 
-  const handleImportDialogue = (graph: DialogueGraph, opts?: { autoSwitch?: boolean }) => {
+  const handleImportDialogue = (graph: DialogueGraph) => {
     setDialogueGraph(graph);
-    if (opts?.autoSwitch) {
-      setActiveTab('graph');
-    }
   };
 
-  // Serialize current styles block in the new RAW format shown by the user
-  const serializeStylesToRaw = (styles: DialogueGraph['styles']): string => {
-    const lines: string[] = [];
-    // Named styles first (style.<name>)
-    const named = (styles as any).styles || {};
-    Object.entries(named).forEach(([key, st]: any) => {
-      const parts: string[] = [];
-      parts.push(`style.${key}`);
-      if (st?.color) parts.push(`color=${st.color}`);
-      if (st?.bold) parts.push(`bold=true`);
-      if (st?.italic) parts.push(`italic=true`);
-      if (st?.underline) parts.push(`underline=true`);
-      if (st?.strikethrough) parts.push(`strikethrough=true`);
-      lines.push(parts.join(' '));
-    });
-    if (Object.keys(named).length > 0) lines.push('');
-    // Characters
-    const speakerEntries = Object.entries(styles?.speakers || {});
-    speakerEntries.forEach(([name, style], idx) => {
-      const nameStyle: any = (style as any)?.name || {};
-      const textStyle: any = (style as any)?.text || {
-        color: (style as any)?.color,
-        bold: (style as any)?.bold,
-        italic: (style as any)?.italic,
-        underline: (style as any)?.underline,
-        strikethrough: (style as any)?.strikethrough,
-      };
-      const parts: string[] = [];
-      parts.push(`character.${idx + 1}`);
-      parts.push(`name=${name}`);
-      if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
-      if (nameStyle?.bold) parts.push(`name_bold=true`);
-      if (nameStyle?.italic) parts.push(`name_italic=true`);
-      if (nameStyle?.underline) parts.push(`name_underline=true`);
-      if (nameStyle?.strikethrough) parts.push(`name_strikethrough=true`);
-      if (textStyle?.color) parts.push(`text_color=${textStyle.color}`);
-      if (textStyle?.bold) parts.push(`text_bold=true`);
-      if (textStyle?.italic) parts.push(`text_italic=true`);
-      if (textStyle?.underline) parts.push(`text_underline=true`);
-      if (textStyle?.strikethrough) parts.push(`text_strikethrough=true`);
-      lines.push(parts.join(' '));
-    });
-    if (speakerEntries.length > 0) lines.push("");
-    // Buttons
-    const buttonEntries = Object.entries(styles?.buttons || {});
-    buttonEntries.forEach(([id, style], idx) => {
-      const st: any = style as any;
-      const label = st?.label || id;
-      const parts: string[] = [];
-      parts.push(`button.${idx + 1}`);
-      parts.push(`label=${label}`);
-      if (st?.color) parts.push(`color=${st.color}`);
-      if (st?.bold) parts.push(`bold=true`);
-      if (st?.italic) parts.push(`italic=true`);
-      if (st?.underline) parts.push(`underline=true`);
-      if (st?.strikethrough) parts.push(`strikethrough=true`);
-      lines.push(parts.join(' '));
-    });
-    return lines.join('\n');
-  };
+  // Removed unused serializeStylesToRaw helper
 
   // Persist styles back into the raw dialogue file by replacing all character.X / button.X lines
   const applyStylesFragmentToRaw = useCallback((stylesFragment: string) => {
@@ -358,18 +280,8 @@ const App: React.FC = () => {
       });
       if (!result?.canceled && result.filePaths && result.filePaths[0]) {
         const filePath = result.filePaths[0];
-        try {
-          const text: string = await ipcRenderer.invoke('read-file', filePath);
-          const graph = parseDialogue(text);
-          setDialogueSource(text);
-          setDialogueSource(text);
-          try { window.localStorage.setItem('lastDialogueFilePath', filePath); } catch {}
-          handleImportDialogue(graph, { autoSwitch: true });
-          // Optional: start watching in Electron main (EditorContainer handles change events when mounted)
-          try { ipcRenderer.send('watch-file', filePath); } catch {}
-        } catch (err: any) {
-          alert('Failed to open dialogue file: ' + (err?.message || String(err)));
-        }
+        pendingImportRef.current = { kind: 'electron', path: filePath };
+        setIsImportConfirmOpen(true);
       }
       return;
     }
@@ -423,60 +335,59 @@ const App: React.FC = () => {
     }
   };
 
-  // Optional helper to import JSON from a file path and cache path
-  const importJsonFromPath = useCallback(async (filePath: string) => {
-    try {
-      // Only available in Electron
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
-      if (!ipcRenderer) return;
-      const text: string = await ipcRenderer.invoke('read-file', filePath);
-      importJson(text);
-      setDialogueSource(text);
-      try { window.localStorage.setItem('lastTellrawFilePath', filePath); } catch {}
-      setLastTellrawFilePath(filePath);
-      ipcRenderer.send('watch-file', filePath);
-      // Listen once to refresh from disk
-      const onChanged = async (_event: any, payload: { path: string }) => {
-        if (payload?.path === filePath) {
-          const nextText: string = await ipcRenderer.invoke('read-file', filePath);
-          importJson(nextText);
-        }
-      };
-      ipcRenderer.on('file-changed', onChanged);
-    } catch {
-      // ignore
-    }
-  }, []);
+  // Removed unused importJsonFromPath helper
 
   // Clear selection when switching to graph mode to prevent freezes
   const handleTabChange = (value: string) => {
-    console.log('🔄 Tab change requested:', value, 'Current activeTab:', activeTab);
     
     if (value === 'graph') {
-      console.log('📊 Switching to graph mode - clearing selections...');
       
       // Clear Slate selection to prevent freezes
       if (editor.selection) {
-        console.log('🗑️ Clearing Slate selection:', editor.selection);
         Transforms.deselect(editor);
       }
       
-      console.log('🗑️ Clearing segment states...');
       setActiveSegmentIndex(null);
       setLastSelection(null);
       setBeforeSegs(null);
       setMarkedSegs(null);
       setAfterSegs(null);
       
-      console.log('✅ Graph mode cleanup complete');
     } else {
-      console.log('✏️ Switching to editor mode');
     }
     
-    setActiveTab(value as 'presets' | 'editor' | 'graph' | 'raw');
-    console.log('🔄 Tab change complete. New activeTab:', value);
+    const next = value as 'presets' | 'editor' | 'graph' | 'raw';
+    setActiveTab(next);
+    try { window.localStorage.setItem('lastActiveTab', next); } catch {}
   };
+
+  // Persist RAW edits to disk when editing a loaded file (Electron only)
+  // Track whether the latest dialogueSource change originated from RAW editor input
+  const isLocalRawEditRef = useRef<boolean>(false);
+  const lastWrittenContentRef = useRef<string>("");
+  const rawSaveTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    // electron ipcRenderer available when running under Electron
+    const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+    if (!ipcRenderer) return;
+    if (!isLocalRawEditRef.current) return;
+    const path = window.localStorage.getItem('lastDialogueFilePath');
+    if (!path) return;
+    if (dialogueSource === lastWrittenContentRef.current) { isLocalRawEditRef.current = false; return; }
+    if (rawSaveTimerRef.current) { window.clearTimeout(rawSaveTimerRef.current); rawSaveTimerRef.current = null; }
+    rawSaveTimerRef.current = window.setTimeout(async () => {
+      try {
+        await ipcRenderer.invoke('write-file', path, dialogueSource);
+        lastWrittenContentRef.current = dialogueSource;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to write dialogue file:', e);
+      } finally {
+        isLocalRawEditRef.current = false;
+      }
+    }, 300);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogueSource]);
 
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
@@ -514,19 +425,61 @@ const App: React.FC = () => {
               onChange={async (e) => {
                 const file = e.target.files && e.target.files[0];
                 if (!file) return;
-                try {
-                  const text = await file.text();
-                  const graph = parseDialogue(text);
-                  setDialogueSource(text);
-                  handleImportDialogue(graph, { autoSwitch: true });
-                } catch (err: any) {
-                  alert('Failed to import dialogue: ' + (err?.message || String(err)));
-                } finally {
-                  if (dialogueFileInputRef.current) dialogueFileInputRef.current.value = '';
-                }
+                pendingImportRef.current = { kind: 'browser', file };
+                setIsImportConfirmOpen(true);
+                if (dialogueFileInputRef.current) dialogueFileInputRef.current.value = '';
               }}
             />
             <Button variant="surface" size="2" onClick={handleOpenDialogueFile}>Import Dialogue (.txt)</Button>
+            {/* Import confirmation dialog */}
+            <AlertDialog.Root open={isImportConfirmOpen} onOpenChange={setIsImportConfirmOpen}>
+              <AlertDialog.Content maxWidth="450px">
+                <AlertDialog.Title>Overwrite current edits?</AlertDialog.Title>
+                <AlertDialog.Description>
+                  Importing will overwrite current edits and clear cached data. This cannot be undone.
+                </AlertDialog.Description>
+                <Flex gap="3" justify="end" mt="3">
+                  <AlertDialog.Cancel>
+                    <Button variant="outline">Cancel</Button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action>
+                    <Button
+                      color="red"
+                      onClick={async () => {
+                        try {
+                          try { window.localStorage.clear(); } catch {}
+                          handleReset();
+                          const pending = pendingImportRef.current;
+                          if (!pending) return;
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+                          if (pending.kind === 'electron' && ipcRenderer) {
+                            const text: string = await ipcRenderer.invoke('read-file', pending.path);
+                            const graph = parseDialogue(text);
+                            setDialogueSource(text);
+                            try { window.localStorage.setItem('lastDialogueFilePath', pending.path); } catch {}
+                            handleImportDialogue(graph);
+                            try { ipcRenderer.send('watch-file', pending.path); } catch {}
+                          } else if (pending.kind === 'browser') {
+                            const text = await pending.file.text();
+                            const graph = parseDialogue(text);
+                            setDialogueSource(text);
+                            handleImportDialogue(graph);
+                          }
+                        } catch (err: any) {
+                          alert('Failed to import dialogue: ' + (err?.message || String(err)));
+                        } finally {
+                          pendingImportRef.current = null;
+                          setIsImportConfirmOpen(false);
+                        }
+                      }}
+                    >
+                      Import
+                    </Button>
+                  </AlertDialog.Action>
+                </Flex>
+              </AlertDialog.Content>
+            </AlertDialog.Root>
           </div>
           
           <Box pt="3" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -669,118 +622,23 @@ const App: React.FC = () => {
 
             {activeTab === 'raw' && (
               <Tabs.Content value="raw" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <Card size="2" variant="surface" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
-                  <Text as="div" size="2">Edit dialogue.txt</Text>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <Editor
-                      value={dialogueSource}
-                      onValueChange={(code) => {
-                        setDialogueSource(code);
-                        // Simple lint: validate scene headers only; no auto-apply to graph
-                        const lines = code.split(/\r?\n/);
-                        const errs: Array<{ line: number; message: string }> = [];
-                        const sceneStart = /^@([A-Za-z0-9_\-]+)\s*$/;
-                        lines.forEach((line, idx) => {
-                          if (/^\s*@/.test(line) && !sceneStart.test(line.trim())) {
-                            errs.push({ line: idx + 1, message: 'Invalid node name. Use @name with letters, digits, _ or - only.' });
-                          }
-                        });
-                        setRawLintErrors(errs);
-                      }}
-                      highlight={(code) => {
-                        // Raw: minimal markup. Color scene headers, inline @refs, and brackets/braces
-                        const escapeHtml = (s: string) => s
-                          .replace(/&/g, '&amp;')
-                          .replace(/</g, '&lt;')
-                          .replace(/>/g, '&gt;');
-                        // Gather named styles directly from current RAW text to avoid needing Apply-to-Graph
-                        const knownStyleNames = new Set<string>();
-                        try {
-                          code.split(/\r?\n/).forEach((ln) => {
-                            const m = ln.trim().match(/^style\.([A-Za-z0-9_\-]+)\b/i);
-                            if (m) knownStyleNames.add(m[1]);
-                          });
-                        } catch {}
-                        const colorize = (escapedLine: string) => {
-                          // First: hex color codes -> colored background, white text
-                          let out = escapedLine.replace(/#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})\b/g, (m) => {
-                            const hex = m.replace('#','');
-                            let cssColor = '#' + hex;
-                            if (hex.length === 3) {
-                              cssColor = '#' + hex.split('').map(ch => ch + ch).join('');
-                            } else if (hex.length === 8) {
-                              const r = parseInt(hex.slice(0,2), 16);
-                              const g = parseInt(hex.slice(2,4), 16);
-                              const b = parseInt(hex.slice(4,6), 16);
-                              const a = parseInt(hex.slice(6,8), 16) / 255;
-                              cssColor = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
-                            }
-                            return `<span style="background-color:${cssColor}; color:#fff; padding:0 2px; border-radius:2px">${m}</span>`;
-                          });
-                          // Mark unknown style=NAME anywhere on the line (robust; not limited to {...})
-                          out = out.replace(/(\bstyle\s*=\s*)([A-Za-z0-9_-]+)/g, (_m, p1, p2) => {
-                            if (!knownStyleNames.has(p2)) {
-                              return `${p1}<span class=\"raw-unknown-style\">${p2}</span>`;
-                            }
-                            return `${p1}${p2}`;
-                          });
-                          // Then: [] in yellow (bracket), {} in pink (brace)
-                          out = out.replace(/\[|\]/g, (m) => `<span style="color:${syntaxColors.bracket}">${m}</span>`);
-                          out = out.replace(/\{|\}/g, (m) => `<span style="color:${syntaxColors.brace}">${m}</span>`);
-                          // inline @name references
-                          out = out.replace(/@([A-Za-z0-9_\-]+)/g, (_m, p1) => `<span style="color:${syntaxColors.selector}">@${p1}</span>`);
-                          // arrows '->' (escaped as -&gt;)
-                          out = out.replace(/-&gt;/g, `<span style="color:${syntaxColors.punctuation}">-&gt;</span>`);
-                          // any token like word.word as a keyword (e.g., character.1, button.primary, style.name)
-                          out = out.replace(/\b([A-Za-z_][A-Za-z0-9_-]*)\.([A-Za-z_][A-Za-z0-9_-]*)\b/g, (_m, a, b) => `<span style="color:${syntaxColors.keyword}">${a}.${b}</span>`);
-                          return out;
-                        };
-                        return code
-                          .split(/\r?\n/)
-                          .map((line) => {
-                            const escaped = escapeHtml(line);
-                            if (/^\s*@/.test(line)) {
-                              return `<span class="token node_name_definition">${escaped}</span>`;
-                            }
-                            return colorize(escaped);
-                          })
-                          .join('\n');
-                      }}
-                      padding={12}
-                      style={{
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                        backgroundColor: 'var(--gray-a2)',
-                        color: 'white',
-                        border: '1px solid var(--gray-a6)',
-                        borderRadius: 6,
-                        minHeight: '280px',
-                        height: '100%',
-                        overflow: 'auto'
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px dashed var(--gray-a6)', paddingTop: 8 }}>
-                    {rawLintErrors.length > 0 ? (
-                      <div>
-                        <Text as="div" size="2" style={{ color: 'var(--red9)' }}>
-                          {rawLintErrors.length} problem{rawLintErrors.length === 1 ? '' : 's'}
-                        </Text>
-                      </div>
-                    ) : (
-                      <div />
-                    )}
-                    <div>
-                      <Button size="2" onClick={() => {
-                        try {
-                          const graph = parseDialogue(dialogueSource);
-                          setDialogueGraph(graph);
-                        } catch (err: any) {
-                          alert('Failed to parse dialogue: ' + (err?.message || String(err)));
-                        }
-                      }}>Apply to Graph</Button>
-                    </div>
-                  </div>
-                </Card>
+                <RawTab
+                  dialogueSource={dialogueSource}
+                  onChange={(code) => {
+                    isLocalRawEditRef.current = true;
+                    setDialogueSource(code);
+                  }}
+                  rawLintErrors={rawLintErrors}
+                  setRawLintErrors={setRawLintErrors}
+                  onApplyToGraph={() => {
+                    try {
+                      const graph = parseDialogue(dialogueSource);
+                      setDialogueGraph(graph);
+                    } catch (err: any) {
+                      alert('Failed to parse dialogue: ' + (err?.message || String(err)));
+                    }
+                  }}
+                />
               </Tabs.Content>
             )}
           </Box>

@@ -49,6 +49,11 @@ ipcMain.handle('read-file', async (_event, filePath) => {
   return data;
 });
 
+ipcMain.handle('write-file', async (_event, filePath, content) => {
+  await fs.promises.writeFile(filePath, content, 'utf-8');
+  return true;
+});
+
 ipcMain.on('watch-file', (event, filePath) => {
   const webContentsId = event.sender.id;
   clearWatchersFor(webContentsId);
