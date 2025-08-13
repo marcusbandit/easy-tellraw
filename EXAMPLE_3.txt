@@ -1,0 +1,121 @@
+@styles
+style.danger color=#f10430 italic=true
+style.normal color=#d51515
+style.primary color=#2D6CDF
+style.shop_item color=#AA5140
+style.warning color=#FFC107
+
+character.Elder name_color=#5FCF7F text_color=#A0FF9F
+character.Guard name_color=#8C8C8C text_color=#D0D0D0
+character.Jordan name_color=#4f57dd text_color=#56C0FF text_bold=true
+character.Kara name_color=#B04A7A text_color=#FF6BAA
+character.Merchant name_color=#BFA040 text_color=#FFD580
+character.Narrator name_color=#888888 text_color=#AAAAAA
+character.Thief name_color=#B02F2F text_color=#FF4F4F
+
+button.yes color=#3ade2c
+button.no color=#ec3456
+@endstyles
+
+@start
+{character.Narrator} {italic}The wind howls through the empty streets...{/}
+{character.Jordan} Kara, we need to decide. [Go to the market -> @market_entry]{style=primary} [Head to the guard tower -> @guard_tower_entry]{style=warning} [Check map -> ui:map/open]{color=#00FFC8}
+{character.Kara} Or we could just go home. [Go home -> @go_home]{style=danger}
+
+@market_entry
+{character.Merchant} Welcome! Care to browse? [Yes -> @market_browse]{style=primary} [No -> @market_leave]{style=danger}
+{character.Jordan} {italic}I’m not sure we have time for this...{/}
+Stab yourself? [Stab stab -> execute as @s run damage @s sword 10]
+
+@market_browse
+{character.Merchant} We’ve got a bit of everything. What are you after?  
+{bold}Potions{/}: [Potion -> shop:potions/buy_health]{style=shop_item}  
+{bold}Weapons{/}: [Sword -> shop:weapons/buy_sword]{style=shop_item}  
+{bold}Armor{/}: [Shield -> shop:armor/buy_shield]{style=shop_item} [Cloak -> shop:armor/buy_cloak]{style=shop_item}  
+{bold}Tools{/}: [Lockpick -> shop:tools/buy_lockpick]{style=shop_item} [Lantern -> shop:tools/buy_lantern]{style=shop_item} [Rope -> shop:tools/buy_rope]{style=shop_item} [Chain -> shop:tools/buy_chain]{style=shop_item} [Map -> shop:tools/buy_map]{style=shop_item}  
+{bold}Food{/}: [Apple -> shop:food/buy_apple]{style=shop_item}
+{bold}Misc{/}: [Mysterious Box -> shop:misc/buy_mystery_box]{style=warning}  
+{character.Kara} Or we could {style=danger}steal{/} something. [Steal -> @market_steal]{style=danger}  
+{character.Merchant} Anything else? [Ask about rumors -> @market_rumors] [Ask for discount -> @market_discount] [{button.Back} -> @market_entry]
+{/}
+
+@market_discount
+{character.Merchant} For you, a special price! [Accept offer -> shop:apply_discount]{style=shop_item} [Haggle more -> @market_haggle]{style=warning} [Decline -> @market_browse]
+
+@market_haggle
+{character.Merchant} Hmm... you drive a hard bargain. [Final offer -> shop:apply_final_discount]{style=shop_item} [No thanks -> @market_browse]
+
+@market_rumors
+{character.Merchant} They say the {bold}{character.Elder}{/} is hiding something in the forest. [Go to forest -> @forest_entry] [{button.Back} -> @market_browse]
+
+@market_steal
+{character.Thief} {italic}Psst{/}, I saw that. Want in on a bigger job? [Yes -> @thief_job_offer]{style=primary} [No -> @market_browse]
+
+@thief_job_offer
+{character.Thief} Meet me at midnight by the docks. [Agree -> @docks_meet] [Refuse -> @market_browse]
+
+@market_leave
+{character.Jordan} Let’s move on. [Go to forest -> @forest_entry] [Go to guard tower -> @guard_tower_entry]
+
+@forest_entry
+{character.Elder} Welcome, travelers. Do you seek wisdom or danger? [Wisdom -> @forest_wisdom]{style=primary} [Danger -> @forest_danger]{style=danger} [{button.Back} -> @market_entry]
+
+@forest_wisdom
+{character.Elder} The path ahead is treacherous. {italic}Beware the red moon.{/} [Continue -> @forest_clearing]{style=primary} [{button.Back} -> @forest_entry]
+
+@forest_danger
+{character.Elder} Then face the beast! [Fight -> battle:forest/beast] [Run -> @forest_entry]
+
+@forest_clearing
+{character.Narrator} You arrive at a quiet clearing. {character.Jordan} Something feels {bold}off{/}... [Investigate -> @forest_investigate] [Rest -> @forest_rest]
+
+@forest_investigate
+{character.Narrator} You find a hidden trapdoor. [Open -> @trapdoor_entry] [Ignore -> @forest_clearing]
+
+@forest_rest
+{character.Kara} Let’s take a break. [Sleep -> time:advance/8_hours] [{button.Back} -> @forest_clearing]
+
+@trapdoor_entry
+{character.Narrator} The trapdoor creaks open, revealing darkness. [Climb down -> @underground_entry] [Close -> @forest_investigate]
+
+@underground_entry
+{character.Guard} Halt! How did you get here? [Lie -> @underground_lie] [Tell truth -> @underground_truth]
+
+@underground_lie
+{character.Guard} I don’t believe you. [Fight -> battle:underground/guard] [Run -> @underground_entry]
+
+@underground_truth
+{character.Guard} Huh. Well, you’re here now. [Proceed -> @underground_chamber]
+
+@underground_chamber
+{character.Narrator} The chamber glows with strange light. [Touch crystal -> magic:crystal/activate]{style=primary} [{button.Back} -> @underground_entry]
+
+@guard_tower_entry
+{character.Guard} State your business. [Visit Kara’s friend -> @friend_visit] [Inspect tower -> @tower_interior] [{button.Back} -> @market_entry]
+
+@friend_visit
+{character.Kara} My friend works here. [Talk -> @friend_talk] [{button.Back} -> @guard_tower_entry]
+
+@friend_talk
+Friend Good to see you! Need help? [{button.Yes} -> @friend_help] [{button.No} -> @friend_visit]
+
+@friend_help
+Friend I can open the gate for you. [Open gate -> city:gate/open]{style=shop_item} [{button.Back} -> @friend_visit]
+
+@tower_interior
+{character.Narrator} The tower is old and dusty. [Climb -> @tower_top] [{button.Back} -> @guard_tower_entry]
+
+@tower_top
+{character.Narrator} You see the whole city from here. [Signal Kara -> @signal_kara] [Climb down -> @tower_interior]
+
+@signal_kara
+{character.Kara} I see you! [Wave back -> @tower_top] [Ignore -> @tower_interior]
+
+@docks_meet
+{character.Thief} You came. Ready? [{button.Yes} -> @docks_job] [{button.No} -> @market_entry]
+
+@docks_job
+{character.Narrator} The job is risky. [Accept -> heist:docks/start]{style=primary} [{button.Back} -> @market_entry]
+
+@go_home
+{character.Narrator} You return home. The adventure ends here. [Restart -> ui:game/restart]{style=danger}

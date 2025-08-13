@@ -1,32 +1,35 @@
 import React, { CSSProperties, useEffect, useMemo, useRef, useCallback, useState } from 'react';
-import ReactFlow, { Background, Controls, Edge, MiniMap, Node, NodeTypes, Position, ReactFlowProvider, Handle, useEdgesState, useNodesState } from 'reactflow';
+import ReactFlow, { Background, Controls, Edge, MiniMap, Node, NodeTypes, Position, ReactFlowProvider, Handle, useEdgesState, useNodesState, ReactFlowInstance } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { DialogueGraph } from '../../types/dialogue';
 import { Card, Heading, Text } from '@radix-ui/themes';
 
 interface ConversationGraphProps {
   graph: DialogueGraph | null;
+  onSelectScene?: (sceneId: string) => void;
 }
 
-type SceneLineData = { text: string; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean; choices?: OptionData[] };
+type SceneLineData = { namePrefix?: string; nameColor?: string; nameBold?: boolean; nameItalic?: boolean; nameUnderline?: boolean; nameStrikethrough?: boolean; text: string; runs?: Array<{ text: string; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean }>; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean; choices?: OptionData[] };
 type OptionData = { id: string; label: string; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean };
 
 // Debug overlay toggle for node measurements. Disabled by default.
 // Kept intentionally (do not delete) for future debugging needs.
 const SHOW_NODE_DEBUG = false;
 
-const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineData[]; options: OptionData[]; isHovered?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number } }> = ({ data }) => {
+const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineData[]; options: OptionData[]; isHovered?: boolean; isSelected?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number } }> = ({ data }) => {
   return (
     <div style={{
       padding: '12px',
       borderRadius: 10,
-      backgroundColor: data.isHovered ? '#333333' : '#2a2a2a',
-      border: `1px solid ${data.isHovered ? '#aaaaaa' : '#444'}`,
+      backgroundColor: data.isSelected ? '#303029' : (data.isHovered ? '#333333' : '#2a2a2a'),
+      border: data.isSelected ? '1px solid #D4AF37' : `1px solid ${data.isHovered ? '#aaaaaa' : '#444'}`,
       minWidth: 220,
       display: 'grid',
       gridTemplateColumns: '1fr auto',
       columnGap: 12,
-      boxShadow: data.isHovered ? '0 0 0 2px rgba(255,255,255,0.15)' : 'none',
+      boxShadow: data.isSelected
+        ? '0 0 0 2px rgba(212,175,55,0.18)'
+        : (data.isHovered ? '0 0 0 2px rgba(255,255,255,0.15)' : 'none'),
       transition: 'border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease',
       textAlign: 'left',
       position: 'relative',
@@ -49,17 +52,45 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
         <div style={{ fontWeight: 700, marginBottom: 8 }}>{data.label}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {data.lines.map((l, i) => {
-            const baseStyle: CSSProperties = {
-              color: l.color || '#c8c8c8',
+            const containerStyle: CSSProperties = {
               fontSize: 12,
+              textAlign: 'left',
+            };
+            const nameStyle: CSSProperties | undefined = l.namePrefix ? {
+              color: l.nameColor || '#c8c8c8',
+              fontWeight: l.nameBold ? 700 : 400,
+              fontStyle: l.nameItalic ? 'italic' : 'normal',
+              textDecoration: [l.nameUnderline ? 'underline' : '', l.nameStrikethrough ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
+            } : undefined;
+            const textStyle: CSSProperties = {
+              color: l.color || '#c8c8c8',
               fontWeight: l.bold ? 700 : 400,
               fontStyle: l.italic ? 'italic' : 'normal',
               textDecoration: [l.underline ? 'underline' : '', l.strikethrough ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
-              textAlign: 'left',
             };
             return (
-              <div key={i} style={baseStyle}>
-                {l.text}{' '}
+              <div key={i} style={containerStyle}>
+                {l.namePrefix && (
+                  <span style={nameStyle}>{l.namePrefix}</span>
+                )}
+                {Array.isArray((l as any).runs) && (l as any).runs.length > 0 ? (
+                  <>
+                    {(l as any).runs.map((r: any, ri: number) => {
+                      const rStyle: CSSProperties = {
+                        color: r.color ?? textStyle.color,
+                        fontWeight: r.bold ? 700 : (textStyle.fontWeight as any),
+                        fontStyle: r.italic ? 'italic' : (textStyle.fontStyle as any),
+                        textDecoration: [r.underline ? 'underline' : '', r.strikethrough ? 'line-through' : ''].filter(Boolean).join(' ') || (textStyle.textDecoration as any),
+                      };
+                      return <span key={ri} style={rStyle}>{r.text}</span>;
+                    })}
+                    {' '}
+                  </>
+                ) : (
+                  <>
+                    <span style={textStyle}>{l.text}</span>{' '}
+                  </>
+                )}
                 {l.choices && l.choices.length > 0 && (
                   <>
                     {l.choices.map((opt, idx) => {
@@ -142,7 +173,7 @@ const GhostNode: React.FC<{ data: { label: string; isHovered?: boolean; debugHei
 
 const nodeTypes: NodeTypes = { scene: SceneNode, ghost: GhostNode };
 
-const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) => {
+const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, onSelectScene }) => {
   // Local state so nodes are draggable and connections editable
   // Toggle debug overlay markers for target centers
   // Debug target markers toggle. Disabled by default.
@@ -169,11 +200,19 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
   // Persistable map of latest desired target centers per node (pane coordinates)
   const desiredTargetsRef = useRef<Record<string, { x: number; y: number }>>({});
   const transformRef = useRef<[number, number, number]>([0, 0, 1]);
+  const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
   // Transform is tracked via onMove into transformRef to avoid requiring useStore
   // When hovering one instance of a scene, highlight all instances by tracking the logical scene id
   const [hoveredSceneId, setHoveredSceneId] = useState<string | null>(null);
   const lastHoveredSceneIdRef = useRef<string | null>(null);
   const prevHoveredSceneIdRef = useRef<string | null>(null);
+  // Selection state (by logical scene id)
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  // Drag guard to avoid click-select after dragging
+  const isDraggingAnyRef = useRef<boolean>(false);
+  const lastDragTsRef = useRef<number>(0);
+  const dragStartPosRef = useRef<Record<string, { x: number; y: number }>>({});
+  const CLICK_DRAG_THRESHOLD = 6; // px pane-space
   useEffect(() => {
     // Track previous hovered to update both previous and current IDs minimally
     prevHoveredSceneIdRef.current = lastHoveredSceneIdRef.current;
@@ -305,6 +344,16 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
       });
     });
 
+    // Helper: resolve button style by name, case-insensitive
+    const getButtonStyle = (name?: string) => {
+      if (!name) return undefined as (typeof graph.styles.buttons)[string] | undefined;
+      const direct = (graph.styles.buttons as any)[name];
+      if (direct) return direct;
+      const lower = String(name).toLowerCase();
+      const entry = Object.entries(graph.styles.buttons).find(([k]) => k.toLowerCase() === lower);
+      return entry ? entry[1] : undefined;
+    };
+
     // Helper to build a scene node with a specific nodeId (supports duplicates)
     const buildSceneNode = (
       nodeId: string,
@@ -314,24 +363,50 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     ) => {
       const scene = graph.scenes[sceneId];
       const lineData: SceneLineData[] = scene.lines.map(l => {
-        const speakerColor = l.speaker ? graph.styles.speakers[l.speaker]?.color : undefined;
-        const color = l.style?.color || speakerColor || '#c8c8c8';
-        const choices: OptionData[] = l.choices.map((choice, i) => ({
-          id: `${nodeId}-inline-${i}`,
-          label: choice.text,
-          color: choice.color || (choice.className ? graph.styles.buttons[choice.className]?.color : undefined),
-          bold: !!choice.bold,
-          italic: !!choice.italic,
-          underline: !!choice.underline,
-          strikethrough: !!choice.strikethrough,
-        }));
+        const speakerStyle = l.speaker ? graph.styles.speakers[l.speaker] : undefined;
+        const nameColor = speakerStyle?.name?.color;
+        const nameBold = !!(speakerStyle?.name?.bold);
+        const nameItalic = !!(speakerStyle?.name?.italic);
+        const nameUnderline = !!(speakerStyle?.name?.underline);
+        const nameStrikethrough = !!(speakerStyle?.name?.strikethrough);
+        const textColorFallback = speakerStyle?.text?.color || speakerStyle?.color;
+        const textBoldFallback = !!(speakerStyle?.text?.bold ?? speakerStyle?.bold);
+        const textItalicFallback = !!(speakerStyle?.text?.italic ?? speakerStyle?.italic);
+        const textUnderlineFallback = !!(speakerStyle?.text?.underline ?? speakerStyle?.underline);
+        const textStrikeFallback = !!(speakerStyle?.text?.strikethrough ?? speakerStyle?.strikethrough);
+        const color = l.style?.color || textColorFallback || '#c8c8c8';
+        const choices: OptionData[] = l.choices.map((choice, i) => {
+          const btn = getButtonStyle(choice.className);
+          const finalLabel = (() => {
+            if (choice.text && choice.text.length > 0) return choice.text;
+            if (btn?.label && btn.label.length > 0) return btn.label;
+            return choice.className || 'button';
+          })();
+          return ({
+            id: `${nodeId}-inline-${i}`,
+            label: finalLabel,
+            color: choice.color || btn?.color || textColorFallback,
+            bold: (choice.bold !== undefined ? choice.bold : !!btn?.bold),
+            italic: (choice.italic !== undefined ? choice.italic : !!btn?.italic),
+            underline: (choice.underline !== undefined ? choice.underline : !!btn?.underline),
+            strikethrough: (choice.strikethrough !== undefined ? choice.strikethrough : !!btn?.strikethrough),
+          });
+        });
+        const showName = !!l.showSpeakerLabel && !!l.speaker;
         return {
-          text: `${l.speaker ? l.speaker + ': ' : ''}${l.text}`,
+          namePrefix: showName ? `${l.speaker}: ` : undefined,
+          nameColor,
+          nameBold,
+          nameItalic,
+          nameUnderline,
+          nameStrikethrough,
+          text: l.text,
+          runs: (l as any).runs,
           color,
-          bold: !!l.style?.bold,
-          italic: !!l.style?.italic,
-          underline: !!l.style?.underline,
-          strikethrough: !!l.style?.strikethrough,
+          bold: (l.style?.bold !== undefined ? !!l.style?.bold : textBoldFallback),
+          italic: (l.style?.italic !== undefined ? !!l.style?.italic : textItalicFallback),
+          underline: (l.style?.underline !== undefined ? !!l.style?.underline : textUnderlineFallback),
+          strikethrough: (l.style?.strikethrough !== undefined ? !!l.style?.strikethrough : textStrikeFallback),
           choices,
         };
       });
@@ -340,16 +415,24 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
       const options: OptionData[] = [];
       if (allowOutputs) {
         graph.scenes[sceneId].lines.forEach(line => {
+          const spStyle = line.speaker ? graph.styles.speakers[line.speaker] : undefined;
+          const textColorFallback = spStyle?.text?.color || spStyle?.color;
           line.choices.forEach(choice => {
-            const styleColor = choice.color || (choice.className ? graph.styles.buttons[choice.className]?.color : undefined);
+            const btn = getButtonStyle(choice.className);
+            const styleColor = choice.color || btn?.color || textColorFallback;
+            const finalLabel = (() => {
+              if (choice.text && choice.text.length > 0) return choice.text;
+              if (btn?.label && btn.label.length > 0) return btn.label;
+              return choice.className || 'button';
+            })();
             options.push({
               id: `${nodeId}-opt-${optionIndex++}`,
-              label: choice.text,
+              label: finalLabel,
               color: styleColor,
-              bold: !!choice.bold,
-              italic: !!choice.italic,
-              underline: !!choice.underline,
-              strikethrough: !!choice.strikethrough,
+              bold: (choice.bold !== undefined ? choice.bold : !!btn?.bold),
+              italic: (choice.italic !== undefined ? choice.italic : !!btn?.italic),
+              underline: (choice.underline !== undefined ? choice.underline : !!btn?.underline),
+              strikethrough: (choice.strikethrough !== undefined ? choice.strikethrough : !!btn?.strikethrough),
             });
           });
         });
@@ -410,7 +493,10 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         scene.lines.forEach((line, li) => {
           line.choices.forEach((choice, ci) => {
             const optId = `${srcInstance}-opt-${optionIndex++}`;
-            const styleColor = choice.color || (choice.className ? graph.styles.buttons[choice.className]?.color : undefined) || '#cccccc';
+            const spStyle = line.speaker ? graph.styles.speakers[line.speaker] : undefined;
+            const textColorFallback = spStyle?.text?.color || spStyle?.color;
+            const btn = getButtonStyle(choice.className);
+            const styleColor = choice.color || btn?.color || textColorFallback || '#cccccc';
             const tgt = choice.target.startsWith('@') ? choice.target.slice(1) : null;
             if (tgt && graph.scenes[tgt]) {
               const targetId = multiParent.has(tgt) ? `dup:${tgt}:${id}` : tgt; // key by base source scene id
@@ -1416,6 +1502,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
 
   // Restart relaxation after a drag completes; provide smaller runs during drag
   const handleNodeDragStart = useCallback((_e: any, node: Node) => {
+    isDraggingAnyRef.current = true;
     draggedIdsRef.current.add(node.id);
     // determine if node has parents (incoming edges)
     const hasParents = (edges as any[]).some((e: any) => String(e.target) === node.id);
@@ -1425,6 +1512,9 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     // sync ref pos
     posRef.current[node.id] = { x: node.position.x, y: node.position.y };
     velRef.current[node.id] = { vx: 0, vy: 0 };
+    // record drag start position for click-threshold detection
+    const start = posRef.current[node.id];
+    if (start) dragStartPosRef.current[node.id] = { x: start.x, y: start.y };
   }, [edges]);
 
   const handleNodeDrag = useCallback((_e: any, node: Node) => {
@@ -1432,8 +1522,28 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     posRef.current[node.id] = { x: node.position.x, y: node.position.y };
   }, []);
 
+  const focusScene = useCallback((logicalId: string, duration: number = 1100) => {
+    try {
+      const candidates = (graphNodes as any[]).filter(n => (n as any).data?.id === logicalId);
+      let target = candidates.find(n => !String(n.id).startsWith('dup:'))
+        || candidates.find(n => Array.isArray((n as any).data?.options) && (n as any).data.options.length > 0)
+        || (candidates[0] as any);
+      if (!target) return;
+      const targetId = String((target as any).id);
+      const pos = posRef.current[targetId];
+      const w = (target as any).width ?? ((target as any).type === 'ghost' ? 140 : 520);
+      const h = (target as any).height ?? ((target as any).type === 'ghost' ? 40 : 160);
+      if (!pos) return;
+      const centerX = pos.x + w / 2;
+      const centerY = pos.y + h / 2;
+      flowInstanceRef.current?.setCenter(centerX, centerY, { zoom: 1, duration });
+    } catch {}
+  }, [graphNodes]);
+
   const handleNodeDragStop = useCallback((_e: any, node: Node) => {
     draggedIdsRef.current.delete(node.id);
+    isDraggingAnyRef.current = false;
+    lastDragTsRef.current = Date.now();
     const wasRootDrag = draggingRootIdsRef.current.has(node.id);
     draggingRootIdsRef.current.delete(node.id);
     // If user moved a root, pin it so it doesn't drift back
@@ -1442,6 +1552,22 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
     if (draggedIdsRef.current.size === 0) frozenPosDuringDragRef.current = {};
     // Always accept current drop position as the starting point for smoothing back
     posRef.current[node.id] = { x: node.position.x, y: node.position.y };
+    // If movement was below threshold, treat as a click selection
+    try {
+      const start = dragStartPosRef.current[node.id];
+      const end = posRef.current[node.id];
+      if (start && end) {
+        const dx = end.x - start.x; const dy = end.y - start.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < CLICK_DRAG_THRESHOLD) {
+          const logicalId = (node as any).data?.id as string | undefined;
+          if (logicalId) {
+            setSelectedSceneId(logicalId);
+            focusScene(logicalId, 600);
+          }
+        }
+      }
+    } catch {}
     // kick the simulator to settle after a drag
     setSimTick(v => v + 1);
     // Only cache after root drag; non-root drags should not update saved positions
@@ -1450,6 +1576,13 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
       saveLayoutCache();
     }
   }, [saveLayoutCache]);
+
+  const handleNodeClick = useCallback((e: any, node: Node) => {
+    const logicalId = (node as any).data?.id as string | undefined;
+    if (!logicalId) return;
+    setSelectedSceneId(logicalId);
+    focusScene(logicalId, 600);
+  }, [focusScene]);
 
   const displayNodes = useMemo(() => {
     if (!graphNodes) return [] as any[];
@@ -1460,11 +1593,12 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
         const logicalSceneId = (n as any).data?.id as string | undefined;
         const nowHovered = !!logicalSceneId && hoveredSceneId === logicalSceneId;
         const wasHovered = !!logicalSceneId && prevHovered === logicalSceneId;
-        if (!nowHovered && !wasHovered) return n;
+        const isSelected = !!logicalSceneId && selectedSceneId === logicalSceneId;
+        if (!nowHovered && !wasHovered && !isSelected && !(n as any).data?.isSelected) return n;
         return {
           ...n,
-          data: { ...(n.data || {}), isHovered: nowHovered },
-          style: nowHovered ? { ...(n.style || {}), zIndex: 2 } : n.style,
+          data: { ...(n.data || {}), isHovered: nowHovered, isSelected },
+          style: nowHovered || isSelected ? { ...(n.style || {}), zIndex: 2 } : n.style,
         } as any;
       });
     }
@@ -1543,6 +1677,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
           onNodeDragStart={handleNodeDragStart}
           onNodeDrag={handleNodeDrag}
           onNodeDragStop={handleNodeDragStop}
+          onNodeClick={handleNodeClick}
           onNodeMouseEnter={(_e, node) => setHoveredSceneId((node as any).data?.id ?? null)}
           onNodeMouseLeave={(_e, node) => {
             const sceneId = (node as any).data?.id ?? null;
@@ -1561,8 +1696,18 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph }) 
           proOptions={{ hideAttribution: true }}
           onlyRenderVisibleElements
           onInit={(instance) => {
+            flowInstanceRef.current = instance as ReactFlowInstance;
             // hydrate any last targets into overlay if debug shows
             if (DEBUG_SHOW_TARGETS) targetCentersRef.current = { ...desiredTargetsRef.current };
+          }}
+          onNodeDoubleClick={(e, node) => {
+            try {
+              const logicalId = (node as any).data?.id as string | undefined;
+              if (!logicalId) return;
+              setSelectedSceneId(logicalId);
+              focusScene(logicalId, 1000);
+              try { onSelectScene?.(logicalId); } catch {}
+            } catch {}
           }}
         >
           <Controls />

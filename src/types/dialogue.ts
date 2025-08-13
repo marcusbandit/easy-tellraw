@@ -42,12 +42,24 @@ export interface DialogueChoice {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
+  // When label was {button.xxx}, text is cleared and className holds 'xxx'
 }
 
 export interface DialogueLine {
   speaker?: string; // optional for standalone choices
   text: string;
   choices: DialogueChoice[];
+  // Render the speaker name prefix on this line only when true
+  showSpeakerLabel?: boolean;
+  // Optional inline runs with per-segment overrides for text formatting
+  runs?: Array<{
+    text: string;
+    color?: string;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    strikethrough?: boolean;
+  }>;
   style?: {
     color?: string;
     bold?: boolean;

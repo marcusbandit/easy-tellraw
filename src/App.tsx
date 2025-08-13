@@ -59,6 +59,18 @@ const App: React.FC = () => {
   const [dialogueSource, setDialogueSource] = useState<string>("");
   const [rawLintErrors, setRawLintErrors] = useState<Array<{ line: number; message: string }>>([]);
   const dialogueFileInputRef = useRef<HTMLInputElement | null>(null);
+  // Fixed header height tracking to offset content correctly
+  const stickyHeaderRef = useRef<HTMLDivElement | null>(null);
+  const [headerHeight, setHeaderHeight] = useState<number>(0);
+  useEffect(() => {
+    const measure = () => {
+      try { setHeaderHeight(stickyHeaderRef.current?.offsetHeight || 0); } catch {}
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const id = window.setInterval(measure, 200);
+    return () => { window.removeEventListener('resize', measure); window.clearInterval(id); };
+  }, []);
   // Track last opened tellraw JSON file path for caching and hot reload (optional future use)
   // Removed unused lastTellrawFilePath state
   // Import confirmation dialog state
@@ -240,6 +252,75 @@ const App: React.FC = () => {
     navigator.clipboard.writeText(collapsed);
   };
 
+  const loadSceneIntoEditor = useCallback((sceneId: string) => {
+    if (!dialogueGraph) return;
+    const scene = dialogueGraph.scenes?.[sceneId];
+    if (!scene) return;
+    const newValue: Descendant[] = scene.lines.map((line) => {
+      const speakerStyle = line.speaker ? dialogueGraph.styles.speakers[line.speaker] : undefined;
+      const textColorFallback = speakerStyle?.text?.color || speakerStyle?.color || '#ffffff';
+      const textBoldFallback = !!(speakerStyle?.text?.bold ?? speakerStyle?.bold);
+      const textItalicFallback = !!(speakerStyle?.text?.italic ?? speakerStyle?.italic);
+      const textUnderlineFallback = !!(speakerStyle?.text?.underline ?? speakerStyle?.underline);
+      const textStrikeFallback = !!(speakerStyle?.text?.strikethrough ?? speakerStyle?.strikethrough);
+      const baseColor = line.style?.color || textColorFallback;
+      const baseBold = (line.style?.bold !== undefined ? !!line.style?.bold : textBoldFallback);
+      const baseItalic = (line.style?.italic !== undefined ? !!line.style?.italic : textItalicFallback);
+      const baseUnderline = (line.style?.underline !== undefined ? !!line.style?.underline : textUnderlineFallback);
+      const baseStrike = (line.style?.strikethrough !== undefined ? !!line.style?.strikethrough : textStrikeFallback);
+
+      const children: any[] = [];
+      if (line.showSpeakerLabel && line.speaker) {
+        const nameColor = speakerStyle?.name?.color;
+        const nameBold = !!(speakerStyle?.name?.bold);
+        const nameItalic = !!(speakerStyle?.name?.italic);
+        const nameUnderline = !!(speakerStyle?.name?.underline);
+        const nameStrike = !!(speakerStyle?.name?.strikethrough);
+        children.push({ text: `${line.speaker}: `, color: nameColor || baseColor, bold: nameBold, italic: nameItalic, underline: nameUnderline, strikethrough: nameStrike });
+      }
+
+      if (Array.isArray(line.runs) && line.runs.length > 0) {
+        line.runs.forEach((r) => {
+          children.push({
+            text: r.text,
+            color: r.color || baseColor,
+            bold: r.bold !== undefined ? !!r.bold : baseBold,
+            italic: r.italic !== undefined ? !!r.italic : baseItalic,
+            underline: r.underline !== undefined ? !!r.underline : baseUnderline,
+            strikethrough: r.strikethrough !== undefined ? !!r.strikethrough : baseStrike,
+          });
+        });
+      } else if (line.text && line.text.length > 0) {
+        children.push({ text: line.text, color: baseColor, bold: baseBold, italic: baseItalic, underline: baseUnderline, strikethrough: baseStrike });
+      }
+
+      if (Array.isArray(line.choices) && line.choices.length > 0) {
+        // Append a space when there is preceding text
+        if (children.length > 0) children.push({ text: ' ', color: baseColor, bold: baseBold, italic: baseItalic, underline: baseUnderline, strikethrough: baseStrike });
+        line.choices.forEach((choice, idx) => {
+          const btn = dialogueGraph.styles.buttons?.[choice.className || ''];
+          const cColor = choice.color || btn?.color || baseColor;
+          const cBold = choice.bold !== undefined ? !!choice.bold : !!btn?.bold;
+          const cItalic = choice.italic !== undefined ? !!choice.italic : !!btn?.italic;
+          const cUnderline = choice.underline !== undefined ? !!choice.underline : !!btn?.underline;
+          const cStrike = choice.strikethrough !== undefined ? !!choice.strikethrough : !!btn?.strikethrough;
+          const label = (choice.text && choice.text.length > 0) ? choice.text : (btn?.label || choice.className || 'button');
+          children.push({ text: `[${label}]`, color: cColor, bold: cBold, italic: cItalic, underline: cUnderline, strikethrough: cStrike });
+          if (idx < line.choices.length - 1) children.push({ text: ' ', color: baseColor, bold: baseBold, italic: baseItalic, underline: baseUnderline, strikethrough: baseStrike });
+        });
+      }
+
+      return { type: 'paragraph', children } as unknown as Descendant;
+    });
+
+    try { window.localStorage.setItem('editorValue', JSON.stringify(newValue)); } catch {}
+    setValue(newValue);
+    setSlateKey(k => k + 1);
+    setNodeName(sanitizeNodeName(sceneId));
+    setActiveTab('editor');
+    try { window.localStorage.setItem('lastActiveTab', 'editor'); } catch {}
+  }, [dialogueGraph, sanitizeNodeName]);
+
   const handleImportDialogue = (graph: DialogueGraph) => {
     setDialogueGraph(graph);
   };
@@ -248,6 +329,8 @@ const App: React.FC = () => {
 
   // Persist styles back into the raw dialogue file by replacing all character.X / button.X lines
   const applyStylesFragmentToRaw = useCallback((stylesFragment: string) => {
+    // Mark as a local RAW-edit so the electron writer persists to disk
+    isLocalRawEditRef.current = true;
     setDialogueSource(prev => {
       const lines = prev.split(/\r?\n/);
       const startIdx = lines.findIndex(l => /^@styles\s*$/i.test(l.trim()));
@@ -366,6 +449,8 @@ const App: React.FC = () => {
   const isLocalRawEditRef = useRef<boolean>(false);
   const lastWrittenContentRef = useRef<string>("");
   const rawSaveTimerRef = useRef<number | null>(null);
+  // Debounced live parse of RAW source so other tabs stay in sync
+  const rawParseTimerRef = useRef<number | null>(null);
   useEffect(() => {
     // electron ipcRenderer available when running under Electron
     const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
@@ -389,98 +474,139 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogueSource]);
 
+  // Live-update dialogueGraph when RAW source changes (debounced)
+  useEffect(() => {
+    if (rawParseTimerRef.current) {
+      window.clearTimeout(rawParseTimerRef.current);
+      rawParseTimerRef.current = null;
+    }
+    rawParseTimerRef.current = window.setTimeout(() => {
+      try {
+        const graph = parseDialogue(dialogueSource);
+        setDialogueGraph(graph);
+      } catch {
+        // Ignore parse errors while typing; keep last valid graph
+      }
+    }, 200);
+    return () => {
+      if (rawParseTimerRef.current) {
+        window.clearTimeout(rawParseTimerRef.current);
+        rawParseTimerRef.current = null;
+      }
+    };
+  }, [dialogueSource]);
+
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {/* Main content area */}
       <div style={{ flex: '1 1 auto', minWidth: 0, background: 'var(--gray-a2)', display: 'flex', flexDirection: 'column', padding: '16px', overflow: 'auto' }}>
         <Tabs.Root value={activeTab} onValueChange={handleTabChange} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <Tabs.List>
-            <Tabs.Trigger value="presets">Presets</Tabs.Trigger>
-            <Tabs.Trigger value="editor">Editor</Tabs.Trigger>
-            <Tabs.Trigger value="graph">Graph</Tabs.Trigger>
-            <Tabs.Trigger value="raw">Raw</Tabs.Trigger>
-          </Tabs.List>
-          {/* Global toolbar: Dialogue import below tab picker (lighter background) */}
-          <div
-            role="toolbar"
-            style={{
-              backgroundColor: 'var(--gray-a2)',
-              border: '1px solid var(--gray-a6)',
-              padding: '12px',
-              borderRadius: '6px',
-              marginTop: '12px',
-              marginBottom: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-start',
-              gap: 8,
-            }}
-          >
-            {/* Hidden input for browser fallback */}
-            <input
-              ref={dialogueFileInputRef}
-              type="file"
-              accept=".txt"
-              style={{ display: 'none' }}
-              onChange={async (e) => {
-                const file = e.target.files && e.target.files[0];
-                if (!file) return;
-                pendingImportRef.current = { kind: 'browser', file };
-                setIsImportConfirmOpen(true);
-                if (dialogueFileInputRef.current) dialogueFileInputRef.current.value = '';
+          {/* Fixed header: tabs + toolbar, full-bleed to window edges */}
+          <div ref={stickyHeaderRef} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, background: '#18191B', paddingTop: 16, paddingBottom: 8, paddingLeft: 16, paddingRight: 16 }}>
+            <Tabs.List style={{ background: '#18191B' }}>
+              <Tabs.Trigger value="presets">Presets</Tabs.Trigger>
+              <Tabs.Trigger value="editor">Editor</Tabs.Trigger>
+              <Tabs.Trigger value="graph">Graph</Tabs.Trigger>
+              <Tabs.Trigger value="raw">Raw</Tabs.Trigger>
+            </Tabs.List>
+            {/* Global toolbar: Dialogue import below tab picker (lighter background) */}
+            <div
+              role="toolbar"
+              style={{
+                backgroundColor: '#18191B',
+                border: '1px solid var(--gray-a6)',
+                padding: '12px',
+                borderRadius: '6px',
+                marginTop: '12px',
+                marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                gap: 8,
               }}
-            />
-            <Button variant="surface" size="2" onClick={handleOpenDialogueFile}>Import Dialogue (.txt)</Button>
-            {/* Import confirmation dialog */}
-            <AlertDialog.Root open={isImportConfirmOpen} onOpenChange={setIsImportConfirmOpen}>
-              <AlertDialog.Content maxWidth="450px">
-                <AlertDialog.Title>Overwrite current edits?</AlertDialog.Title>
-                <AlertDialog.Description>
-                  Importing will overwrite current edits and clear cached data. This cannot be undone.
-                </AlertDialog.Description>
-                <Flex gap="3" justify="end" mt="3">
-                  <AlertDialog.Cancel>
-                    <Button variant="outline">Cancel</Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <Button
-                      color="red"
-                      onClick={async () => {
-                        try {
-                          try { window.localStorage.clear(); } catch {}
-                          handleReset();
-                          const pending = pendingImportRef.current;
-                          if (!pending) return;
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
-                          if (pending.kind === 'electron' && ipcRenderer) {
-                            const text: string = await ipcRenderer.invoke('read-file', pending.path);
-                            const graph = parseDialogue(text);
-                            setDialogueSource(text);
-                            try { window.localStorage.setItem('lastDialogueFilePath', pending.path); } catch {}
-                            handleImportDialogue(graph);
-                            try { ipcRenderer.send('watch-file', pending.path); } catch {}
-                          } else if (pending.kind === 'browser') {
-                            const text = await pending.file.text();
-                            const graph = parseDialogue(text);
-                            setDialogueSource(text);
-                            handleImportDialogue(graph);
+            >
+              {/* Hidden input for browser fallback */}
+              <input
+                ref={dialogueFileInputRef}
+                type="file"
+                accept=".txt"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files && e.target.files[0];
+                  if (!file) return;
+                  pendingImportRef.current = { kind: 'browser', file };
+                  setIsImportConfirmOpen(true);
+                  if (dialogueFileInputRef.current) dialogueFileInputRef.current.value = '';
+                }}
+              />
+              <Button variant="surface" size="2" onClick={handleOpenDialogueFile}>Import Dialogue (.txt)</Button>
+              {/* Import confirmation dialog */}
+              <AlertDialog.Root open={isImportConfirmOpen} onOpenChange={setIsImportConfirmOpen}>
+                <AlertDialog.Content maxWidth="450px">
+                  <AlertDialog.Title>Overwrite current edits?</AlertDialog.Title>
+                  <AlertDialog.Description>
+                    Importing will overwrite current edits and clear cached data. This cannot be undone.
+                  </AlertDialog.Description>
+                  <Flex gap="3" justify="end" mt="3">
+                    <AlertDialog.Cancel>
+                      <Button variant="outline">Cancel</Button>
+                    </AlertDialog.Cancel>
+                    <AlertDialog.Action>
+                      <Button
+                        color="red"
+                        onClick={async () => {
+                          try {
+                            try { window.localStorage.clear(); } catch {}
+                            handleReset();
+                            const pending = pendingImportRef.current;
+                            if (!pending) return;
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+                            if (pending.kind === 'electron' && ipcRenderer) {
+                              const text: string = await ipcRenderer.invoke('read-file', pending.path);
+                              const graph = parseDialogue(text);
+                              setDialogueSource(text);
+                              try { window.localStorage.setItem('lastDialogueFilePath', pending.path); } catch {}
+                              handleImportDialogue(graph);
+                              try { ipcRenderer.send('watch-file', pending.path); } catch {}
+                            } else if (pending.kind === 'browser') {
+                              const text = await pending.file.text();
+                              const graph = parseDialogue(text);
+                              setDialogueSource(text);
+                              handleImportDialogue(graph);
+                            }
+                          } catch (err: any) {
+                            alert('Failed to import dialogue: ' + (err?.message || String(err)));
+                          } finally {
+                            pendingImportRef.current = null;
+                            setIsImportConfirmOpen(false);
                           }
-                        } catch (err: any) {
-                          alert('Failed to import dialogue: ' + (err?.message || String(err)));
-                        } finally {
-                          pendingImportRef.current = null;
-                          setIsImportConfirmOpen(false);
-                        }
-                      }}
-                    >
-                      Import
-                    </Button>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
+                        }}
+                      >
+                        Import
+                      </Button>
+                    </AlertDialog.Action>
+                  </Flex>
+                </AlertDialog.Content>
+              </AlertDialog.Root>
+            </div>
           </div>
+          {/* Separate gradient overlay below the fixed header, spanning full width */}
+          <div
+            aria-hidden
+            style={{
+              position: 'fixed',
+              top: headerHeight,
+              left: 0,
+              right: 0,
+              height: 16,
+              background: 'linear-gradient(to bottom, rgba(24,25,27,1) 0%, rgba(24,25,27,0) 100%)',
+              pointerEvents: 'none',
+              zIndex: 99,
+            }}
+          />
+          {/* Spacer to offset the fixed header height so content doesn't hide behind it */}
+          <div aria-hidden style={{ height: headerHeight }} />
           
           <Box pt="3" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             {activeTab === 'presets' && (
@@ -616,7 +742,7 @@ const App: React.FC = () => {
             
             {activeTab === 'graph' && (
               <Tabs.Content value="graph" style={{ flex: 1 }}>
-                <EnhancedConversationGraph graph={dialogueGraph} />
+                <EnhancedConversationGraph graph={dialogueGraph} onSelectScene={loadSceneIntoEditor} />
               </Tabs.Content>
             )}
 

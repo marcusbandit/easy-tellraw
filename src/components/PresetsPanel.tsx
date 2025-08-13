@@ -32,46 +32,62 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
   const [buttonStyles, setButtonStyles] = React.useState(() => graph?.styles?.buttons ?? {});
   const [speakerStyles, setSpeakerStyles] = React.useState(() => graph?.styles?.speakers ?? {});
   const [namedStyles, setNamedStyles] = React.useState<Record<string, any>>(() => (graph?.styles as any)?.styles ?? {});
-  React.useEffect(() => { setButtonStyles(graph?.styles?.buttons ?? {}); setSpeakerStyles(graph?.styles?.speakers ?? {}); }, [graph]);
+  React.useEffect(() => {
+    setButtonStyles(graph?.styles?.buttons ?? {});
+    setSpeakerStyles(graph?.styles?.speakers ?? {});
+    setNamedStyles(((graph?.styles as any)?.styles) ?? {});
+  }, [graph]);
+
+  const serializeAllStylesToRaw = React.useCallback((named: Record<string, any>, speakers: Record<string, any>, buttons: Record<string, any>): string => {
+    const lines: string[] = [];
+    // Named styles first (stable order)
+    Object.entries(named || {}).sort((a, b) => a[0].localeCompare(b[0])).forEach(([k, st]: any) => {
+      const parts: string[] = [`style.${k}`];
+      if (st?.color) parts.push(`color=${st.color}`);
+      if (st?.bold) parts.push(`bold=true`);
+      if (st?.italic) parts.push(`italic=true`);
+      if (st?.underline) parts.push(`underline=true`);
+      if (st?.strikethrough) parts.push(`strikethrough=true`);
+      lines.push(parts.join(' '));
+    });
+    if (Object.keys(named || {}).length > 0) lines.push('');
+    // Character styles
+    Object.entries(speakers || {}).sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, style]: any) => {
+      const nameStyle = style?.name || {};
+      const textStyle = style?.text || {};
+      const parts: string[] = [`character.${name}`];
+      if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
+      if (nameStyle?.bold) parts.push(`name_bold=true`);
+      if (nameStyle?.italic) parts.push(`name_italic=true`);
+      if (nameStyle?.underline) parts.push(`name_underline=true`);
+      if (nameStyle?.strikethrough) parts.push(`name_strikethrough=true`);
+      if (textStyle?.color) parts.push(`text_color=${textStyle.color}`);
+      if (textStyle?.bold) parts.push(`text_bold=true`);
+      if (textStyle?.italic) parts.push(`text_italic=true`);
+      if (textStyle?.underline) parts.push(`text_underline=true`);
+      if (textStyle?.strikethrough) parts.push(`text_strikethrough=true`);
+      lines.push(parts.join(' '));
+    });
+    if (Object.keys(speakers || {}).length > 0) lines.push('');
+    // Button presets
+    Object.entries(buttons || {}).forEach(([id, st]: any) => {
+      const label = st?.label || id;
+      const parts: string[] = [`button.${label}`];
+      if (st?.color) parts.push(`color=${st.color}`);
+      if (st?.bold) parts.push(`bold=true`);
+      if (st?.italic) parts.push(`italic=true`);
+      if (st?.underline) parts.push(`underline=true`);
+      if (st?.strikethrough) parts.push(`strikethrough=true`);
+      lines.push(parts.join(' '));
+    });
+    return lines.join('\n');
+  }, []);
   const persistStyles = (nextButtons: any, nextSpeakers: any) => {
     setButtonStyles(nextButtons);
     setSpeakerStyles(nextSpeakers);
     onUpdateStyles?.({ buttons: nextButtons, speakers: nextSpeakers, styles: namedStyles } as any);
-    // Also update RAW tab preview text in App by serializing styles into raw fragment
-    try {
-      const lines: string[] = [];
-      // Characters: sort by name for stability
-      Object.entries(nextSpeakers || {}).forEach(([name, style]: any, idx) => {
-        const nameStyle = style?.name || {};
-        const textStyle = style?.text || {};
-        const parts: string[] = [];
-        parts.push(`character.${name}`);
-        if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
-        if (nameStyle?.bold) parts.push(`name_bold=true`);
-        if (nameStyle?.italic) parts.push(`name_italic=true`);
-        if (nameStyle?.underline) parts.push(`name_underline=true`);
-        if (nameStyle?.strikethrough) parts.push(`name_strikethrough=true`);
-        if (textStyle?.color) parts.push(`text_color=${textStyle.color}`);
-        if (textStyle?.bold) parts.push(`text_bold=true`);
-        if (textStyle?.italic) parts.push(`text_italic=true`);
-        if (textStyle?.underline) parts.push(`text_underline=true`);
-        if (textStyle?.strikethrough) parts.push(`text_strikethrough=true`);
-        lines.push(parts.join(' '));
-      });
-      if (Object.keys(nextSpeakers || {}).length > 0) lines.push('');
-      // Buttons
-      Object.entries(nextButtons || {}).forEach(([id, st]: any) => {
-        const label = st?.label || id;
-        const parts: string[] = [`button.${label}`];
-        if (st?.color) parts.push(`color=${st.color}`);
-        if (st?.bold) parts.push(`bold=true`);
-        if (st?.italic) parts.push(`italic=true`);
-        if (st?.underline) parts.push(`underline=true`);
-        if (st?.strikethrough) parts.push(`strikethrough=true`);
-        lines.push(parts.join(' '));
-      });
-      onRequestRawUpdate?.(lines.join('\n'));
-    } catch {}
+    // Also update RAW tab by serializing ALL styles (named + characters + buttons)
+    try { onRequestRawUpdate?.(serializeAllStylesToRaw(namedStyles, nextSpeakers, nextButtons)); } catch {}
   };
   // Stable random preview per character for the lifetime of this tab mount
   const characterPreviewRef = React.useRef<Record<string, string>>({});
@@ -218,57 +234,20 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                           const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], color: c } };
                           setNamedStyles(next);
                           onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any);
-                          // Issue raw update with full styles serialization
-                          const lines: string[] = [];
-                          Object.entries(next).forEach(([k, st2]: any) => {
-                            const parts: string[] = [`style.${k}`];
-                            if (st2?.color) parts.push(`color=${st2.color}`);
-                            if (st2?.bold) parts.push(`bold=true`);
-                            if (st2?.italic) parts.push(`italic=true`);
-                            if (st2?.underline) parts.push(`underline=true`);
-                            if (st2?.strikethrough) parts.push(`strikethrough=true`);
-                            lines.push(parts.join(' '));
-                          });
-                          // append character + button fragments too
-                          Object.entries(speakerStyles || {}).forEach(([name, style]: any, idx) => {
-                            const nameStyle = style?.name || {};
-                            const textStyle = style?.text || {};
-                            const parts: string[] = [`character.${name}`];
-                            if (nameStyle?.color) parts.push(`name_color=${nameStyle.color}`);
-                            if (nameStyle?.bold) parts.push(`name_bold=true`);
-                            if (nameStyle?.italic) parts.push(`name_italic=true`);
-                            if (nameStyle?.underline) parts.push(`name_underline=true`);
-                            if (nameStyle?.strikethrough) parts.push(`name_strikethrough=true`);
-                            if (textStyle?.color) parts.push(`text_color=${textStyle.color}`);
-                            if (textStyle?.bold) parts.push(`text_bold=true`);
-                            if (textStyle?.italic) parts.push(`text_italic=true`);
-                            if (textStyle?.underline) parts.push(`text_underline=true`);
-                            if (textStyle?.strikethrough) parts.push(`text_strikethrough=true`);
-                            lines.push(parts.join(' '));
-                          });
-                          Object.entries(buttonStyles || {}).forEach(([id, st3]: any, idx) => {
-                            const parts: string[] = [`button.${idx + 1}`, `label=${st3?.label || id}`];
-                            if (st3?.color) parts.push(`color=${st3.color}`);
-                            if (st3?.bold) parts.push(`bold=true`);
-                            if (st3?.italic) parts.push(`italic=true`);
-                            if (st3?.underline) parts.push(`underline=true`);
-                            if (st3?.strikethrough) parts.push(`strikethrough=true`);
-                            lines.push(parts.join(' '));
-                          });
-                          onRequestRawUpdate?.(lines.join('\n'));
+                          onRequestRawUpdate?.(serializeAllStylesToRaw(next, speakerStyles, buttonStyles));
                         }} />
                         <div style={makeGridStyle(CHAR_SWATCH_SIZE)}>
                           {[ '#000000','#AA0000','#00AA00','#00AAAA','#555555','#FF5555','#55FF55','#55FFFF','#AAAAAA','#0000AA','#AA00AA','#FFAA00','#FFFFFF','#5555FF','#FF55FF','#FFFF55', ].map(hex => (
-                            <button key={hex} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], color: hex } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); onRequestRawUpdate?.(Object.entries(next).map(([k, v]: any) => { const p: string[] = [`style.${k}`]; if (v?.color) p.push(`color=${v.color}`); if (v?.bold) p.push(`bold=true`); if (v?.italic) p.push(`italic=true`); if (v?.underline) p.push(`underline=true`); if (v?.strikethrough) p.push(`strikethrough=true`); return p.join(' '); }).join('\n')); }} style={makeSwatchStyle(hex, CHAR_SWATCH_SIZE)} aria-label={hex} />
+                            <button key={hex} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], color: hex } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); onRequestRawUpdate?.(serializeAllStylesToRaw(next, speakerStyles, buttonStyles)); }} style={makeSwatchStyle(hex, CHAR_SWATCH_SIZE)} aria-label={hex} />
                           ))}
                         </div>
                       </div>
                     </Popover.Content>
                   </Popover.Root>
-                  <Button variant={st?.bold ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], bold: !st?.bold } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); }}>B</Button>
-                  <Button variant={st?.italic ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], italic: !st?.italic } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); }}><em>I</em></Button>
-                  <Button variant={st?.underline ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], underline: !st?.underline } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); }}><u>U</u></Button>
-                  <Button variant={st?.strikethrough ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], strikethrough: !st?.strikethrough } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); }}><s>S</s></Button>
+                  <Button variant={st?.bold ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], bold: !st?.bold } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); onRequestRawUpdate?.(serializeAllStylesToRaw(next, speakerStyles, buttonStyles)); }}>B</Button>
+                  <Button variant={st?.italic ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], italic: !st?.italic } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); onRequestRawUpdate?.(serializeAllStylesToRaw(next, speakerStyles, buttonStyles)); }}><em>I</em></Button>
+                  <Button variant={st?.underline ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], underline: !st?.underline } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); onRequestRawUpdate?.(serializeAllStylesToRaw(next, speakerStyles, buttonStyles)); }}><u>U</u></Button>
+                  <Button variant={st?.strikethrough ? 'solid' : 'surface'} onClick={() => { const next = { ...namedStyles, [key]: { ...(namedStyles as any)[key], strikethrough: !st?.strikethrough } }; setNamedStyles(next); onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any); onRequestRawUpdate?.(serializeAllStylesToRaw(next, speakerStyles, buttonStyles)); }}><s>S</s></Button>
                 </Flex>
               );
             })}
@@ -280,10 +259,11 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                   if (e.key === 'Enter') {
                     const name = (e.target as HTMLInputElement).value.trim();
                     if (!name) return;
-                    if (namedStyles[name]) return;
-                    const next = { ...namedStyles, [name]: { color: '#ffffff' } };
-                    setNamedStyles(next);
-                    onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any);
+                     if (namedStyles[name]) return;
+                     const next = { ...namedStyles, [name]: { color: '#ffffff' } };
+                     setNamedStyles(next);
+                     onUpdateStyles?.({ buttons: buttonStyles, speakers: speakerStyles, styles: next } as any);
+                     onRequestRawUpdate?.(serializeAllStylesToRaw(next, speakerStyles, buttonStyles));
                     (e.target as HTMLInputElement).value = '';
                   }
                 }}

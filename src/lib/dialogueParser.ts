@@ -43,8 +43,8 @@ const DIALOGUE_PREFIX = /^([A-Za-z0-9_-]+)(\{[^}]*\})?\s*:\s*(.*)$/;
 // Matches a choice like "[Yes -> @save_kara]{class=primary color=#FF0000 bold}"
 const CHOICE_WITH_META = /\[([^\]]+?)\s*->\s*([^\]]+?)\](?:\{([^}]*)\})?/g;
 
-// Matches inline style markers {italic}...{/}, {bold}...{/}
-const INLINE_MARK = /\{(italic|bold)\}([\s\S]*?)\{\/\}\s*/g;
+// Matches inline style blocks like {italic}text{/}, {italic=false}text{/}, {color=#ff00ff bold}text{/}
+const INLINE_BLOCK = /\{([^}]+)\}([\s\S]*?)\{\/\}/g;
 
 export function parseDialogue(source: string): DialogueGraph {
   const lines = source.split(/\r?\n/);
@@ -53,6 +53,8 @@ export function parseDialogue(source: string): DialogueGraph {
 
   let inStyles = false;
   let currentScene: DialogueScene | null = null;
+  // Tracks the currently active character set by {character.Name} markers
+  let activeSpeaker: string | null = null;
 
   const ensureScene = (id: string) => {
     if (!scenes[id]) scenes[id] = { id, tags: [], lines: [] };
@@ -184,26 +186,60 @@ export function parseDialogue(source: string): DialogueGraph {
       continue;
     }
 
-    // Parse dialogue content, which may include choices
+    // Parse dialogue content, which may include choices and character markers
     let speaker: string | undefined;
     let textPart = line;
     const pref = line.match(DIALOGUE_PREFIX);
     let lineStyle: DialogueLine['style'] | undefined;
+    let showSpeakerLabel = false;
     if (pref) {
+      // Explicit speaker for this line via "Name: text" format
       speaker = pref[1];
       const brace = pref[2];
       textPart = pref[3];
       if (brace) {
         const styleText = brace.slice(1, -1);
         const colorMatch = /color\s*=\s*([#A-Fa-f0-9]{3,8})/.exec(styleText);
-        lineStyle = {
-          color: colorMatch?.[1],
-          bold: /(?:^|\s)bold(?:\s|$)/.test(styleText),
-          italic: /(?:^|\s)italic(?:\s|$)/.test(styleText),
-          underline: /(?:^|\s)underline(?:\s|$)/.test(styleText),
-          strikethrough: /(?:^|\s)strikethrough(?:\s|$)/.test(styleText),
-        };
+        const ls: any = {};
+        if (colorMatch?.[1]) ls.color = colorMatch[1];
+        if (/(?:^|\s)bold(?:\s|$)/.test(styleText)) ls.bold = true;
+        if (/(?:^|\s)italic(?:\s|$)/.test(styleText)) ls.italic = true;
+        if (/(?:^|\s)underline(?:\s|$)/.test(styleText)) ls.underline = true;
+        if (/(?:^|\s)strikethrough(?:\s|$)/.test(styleText)) ls.strikethrough = true;
+        lineStyle = ls;
       }
+      // Update active speaker to explicit one for subsequent lines
+      activeSpeaker = speaker;
+      showSpeakerLabel = true;
+    } else {
+      // When no explicit speaker, support inline markers: {character.Name}
+      // Protect escaped braces first
+      const ESC_L = "\u0001";
+      const ESC_R = "\u0002";
+      const preProtected = textPart
+        .replace(/\\\{/g, ESC_L)
+        .replace(/\\\}/g, ESC_R);
+      // Extract unescaped character markers and update activeSpeaker
+      let modified = preProtected;
+      const markerRegex = /\{character\.([A-Za-z0-9_-]+)\}/g;
+      let m: RegExpExecArray | null;
+      let lastFoundSpeaker: string | null = null;
+      let hadMarker = false;
+      while ((m = markerRegex.exec(preProtected)) !== null) {
+        lastFoundSpeaker = m[1];
+        hadMarker = true;
+      }
+      if (lastFoundSpeaker) activeSpeaker = lastFoundSpeaker;
+      // Remove all marker tokens from visible text
+      modified = modified.replace(markerRegex, '');
+      // Restore escaped braces back to literals
+      textPart = modified
+        .replace(new RegExp(ESC_L, 'g'), '{')
+        .replace(new RegExp(ESC_R, 'g'), '}');
+      // If active speaker is set, use it as the speaker for this line
+      if (activeSpeaker) speaker = activeSpeaker;
+      // Show label when a marker appeared on this line
+      showSpeakerLabel = !!(hadMarker && speaker);
     }
 
     const choices: DialogueChoice[] = [];
@@ -211,25 +247,96 @@ export function parseDialogue(source: string): DialogueGraph {
 
     // extract choices with optional metadata
     message = message.replace(CHOICE_WITH_META, (_, label: string, target: string, meta: string | undefined) => {
-      const choice: DialogueChoice = { text: label.trim(), target: target.trim() };
+      const rawLabel = label.trim();
+      const choice: DialogueChoice = { text: rawLabel, target: target.trim() };
       if (meta) {
         const colorMatch = /(?:^|\s)color\s*=\s*([#A-Fa-f0-9]{3,8})/.exec(meta);
         const classMatch = /(?:^|\s)class\s*=\s*([A-Za-z0-9_-]+)/.exec(meta);
-        choice.color = colorMatch?.[1];
+        const styleMatch = /(?:^|\s)style\s*=\s*([A-Za-z0-9_-]+)/.exec(meta);
+        if (colorMatch?.[1]) choice.color = colorMatch[1];
         if (classMatch) choice.className = classMatch[1];
-        choice.bold = /(?:^|\s)bold(?:\s|$)/.test(meta);
-        choice.italic = /(?:^|\s)italic(?:\s|$)/.test(meta);
-        choice.underline = /(?:^|\s)underline(?:\s|$)/.test(meta);
-        choice.strikethrough = /(?:^|\s)strikethrough(?:\s|$)/.test(meta);
+        if (/(?:^|\s)bold(?:\s|$)/.test(meta)) choice.bold = true;
+        if (/(?:^|\s)italic(?:\s|$)/.test(meta)) choice.italic = true;
+        if (/(?:^|\s)underline(?:\s|$)/.test(meta)) choice.underline = true;
+        if (/(?:^|\s)strikethrough(?:\s|$)/.test(meta)) choice.strikethrough = true;
+        // Apply named style defaults for any unspecified fields
+        if (styleMatch) {
+          const styleName = styleMatch[1];
+          const named: any = (styles as any).styles?.[styleName];
+          if (named && typeof named === 'object') {
+            if (choice.color === undefined && named.color) choice.color = named.color;
+            if (choice.bold === undefined && typeof named.bold === 'boolean') choice.bold = !!named.bold;
+            if (choice.italic === undefined && typeof named.italic === 'boolean') choice.italic = !!named.italic;
+            if (choice.underline === undefined && typeof named.underline === 'boolean') choice.underline = !!named.underline;
+            if (choice.strikethrough === undefined && typeof named.strikethrough === 'boolean') choice.strikethrough = !!named.strikethrough;
+          }
+        }
+      }
+      // If label is a button reference like {button.primary}, use that button style and hide raw token
+      const labelRef = rawLabel.match(/^\{button\.([A-Za-z0-9_-]+)\}$/);
+      if (labelRef) {
+        const btnName = labelRef[1];
+        if (!choice.className) choice.className = btnName;
+        // Defer final label resolution to renderer (uses styles.buttons[btnName].label or btnName)
+        choice.text = '';
       }
       choices.push(choice);
       return ''; // remove from message
     }).trim();
 
-    // strip inline marks, leaving plain text (could be extended later)
-    message = message.replace(INLINE_MARK, '$2');
+    // Parse inline blocks into runs while preserving plain text
+    const runs: DialogueLine['runs'] = [];
+    const baseRunStyle: any = {};
+    if (lineStyle?.color) baseRunStyle.color = lineStyle.color;
+    if (typeof lineStyle?.bold === 'boolean') baseRunStyle.bold = lineStyle.bold;
+    if (typeof lineStyle?.italic === 'boolean') baseRunStyle.italic = lineStyle.italic;
+    if (typeof lineStyle?.underline === 'boolean') baseRunStyle.underline = lineStyle.underline;
+    if (typeof lineStyle?.strikethrough === 'boolean') baseRunStyle.strikethrough = lineStyle.strikethrough;
+    let lastIndex = 0; let ib: RegExpExecArray | null;
+    while ((ib = INLINE_BLOCK.exec(message)) !== null) {
+      const before = message.slice(lastIndex, ib.index);
+      if (before) runs.push({ text: before, ...baseRunStyle });
+      lastIndex = ib.index + ib[0].length;
+      const props = ib[1];
+      const content = ib[2];
+      const seg: any = { text: content };
+      let styleName: string | null = null;
+      props.trim().split(/\s+/).forEach(tok => {
+        if (!tok) return;
+        const eq = tok.indexOf('=');
+        let key = tok;
+        let value: string | boolean = true;
+        if (eq > 0) {
+          key = tok.slice(0, eq).trim();
+          const raw = tok.slice(eq + 1).trim();
+          if (raw === 'true') value = true; else if (raw === 'false') value = false; else value = raw;
+        }
+        switch (key) {
+          case 'bold': seg.bold = !!value; break;
+          case 'italic': seg.italic = !!value; break;
+          case 'underline': seg.underline = !!value; break;
+          case 'strikethrough': seg.strikethrough = !!value; break;
+          case 'color': if (typeof value === 'string') seg.color = value; break;
+          case 'style': if (typeof value === 'string') styleName = value; break;
+        }
+      });
+      if (styleName) {
+        const named: any = (styles as any).styles?.[styleName];
+        if (named && typeof named === 'object') {
+          if (seg.color === undefined && named.color) seg.color = named.color;
+          if (seg.bold === undefined && typeof named.bold === 'boolean') seg.bold = !!named.bold;
+          if (seg.italic === undefined && typeof named.italic === 'boolean') seg.italic = !!named.italic;
+          if (seg.underline === undefined && typeof named.underline === 'boolean') seg.underline = !!named.underline;
+          if (seg.strikethrough === undefined && typeof named.strikethrough === 'boolean') seg.strikethrough = !!named.strikethrough;
+        }
+      }
+      runs.push(seg);
+    }
+    const tail = message.slice(lastIndex);
+    if (tail) runs.push({ text: tail, ...baseRunStyle });
+    const plain = message.replace(INLINE_BLOCK, '$2');
 
-    const dialogueLine: DialogueLine = { speaker, text: message, choices, style: lineStyle };
+    const dialogueLine: DialogueLine = { speaker, text: plain, runs, choices, style: lineStyle, showSpeakerLabel };
     currentScene.lines.push(dialogueLine);
   }
 
