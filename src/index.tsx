@@ -16,7 +16,7 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <React.StrictMode>
-    <Theme appearance="dark">
+    <Theme appearance="dark" accentColor="jade">
       <App />
     </Theme>
   </React.StrictMode>

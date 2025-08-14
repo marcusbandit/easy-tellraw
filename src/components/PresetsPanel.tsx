@@ -147,9 +147,9 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
     return rgbToHex(nr, ng, nb);
   };
   // Shared UI constants for color swatch grids
-  const CHAR_SWATCH_SIZE = 28;
-  const BTN_SWATCH_SIZE = 20;
-  const SWATCH_GAP = 6;
+  const CHAR_SWATCH_SIZE = 32;
+  const BTN_SWATCH_SIZE = 24;
+  const SWATCH_GAP = 8;
   const SWATCH_COLUMNS = 8;
   const makeGridStyle = (size: number): React.CSSProperties => ({
     display: 'grid',
@@ -208,10 +208,10 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                 <Flex key={key} align="center" gap="3" wrap="wrap">
                   <Text size="2" style={{ minWidth: 90 }}>{`style.${key}`}</Text>
                   {/* Preview chip */}
-                  <div style={{ background: '#1C1F20', border: '1px solid var(--gray-a7)', borderRadius: 6, padding: '4px 8px', color, fontWeight: st?.bold ? 700 : 500, fontStyle: st?.italic ? 'italic' : 'normal', textDecoration: st?.underline ? 'underline' : st?.strikethrough ? 'line-through' : 'none' }}>Sample</div>
+                  <div style={{ background: '#1C1F20', border: '1px solid var(--gray-a7)', borderRadius: 8, padding: '8px 8px', color, fontWeight: st?.bold ? 700 : 500, fontStyle: st?.italic ? 'italic' : 'normal', textDecoration: st?.underline ? 'underline' : st?.strikethrough ? 'line-through' : 'none' }}>Sample</div>
                   <Popover.Root>
                     <Popover.Trigger>
-                      <div role="button" aria-label="Pick color" style={{ width: 28, height: 28, backgroundColor: color, border: '1px solid var(--gray-a7)', borderRadius: 4, cursor: 'pointer' }} />
+                      <div role="button" aria-label="Pick color" style={{ width: 32, height: 32, backgroundColor: color, border: '1px solid var(--gray-a7)', borderRadius: 8, cursor: 'pointer' }} />
                     </Popover.Trigger>
                     <Popover.Content style={{ width: 260 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -277,8 +277,8 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                     <div style={{
                       background: '#1C1F20',
                       border: '1px solid var(--gray-a7)',
-                      borderRadius: 6,
-                      padding: '8px 10px',
+                      borderRadius: 8,
+                      padding: '8px 8px',
                       display: 'flex',
                       gap: 8,
                       alignItems: 'center',
@@ -300,8 +300,8 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                     {/* Name display editor */}
                     <Flex align="center" gap="3" wrap="wrap">
                       <Text size="2" style={{ minWidth: 90 }}>Name</Text>
-                      <div style={{ position: 'relative', width: 280, height: 32, display: 'inline-block' }}>
-                        <span aria-hidden style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'center', padding: '4px 8px', color: nameColor, fontWeight: nameStyle?.bold ? 700 : 500, fontStyle: nameStyle?.italic ? 'italic' : 'normal', textDecoration: nameStyle?.underline ? 'underline' : nameStyle?.strikethrough ? 'line-through' : 'none', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 14, fontFamily: 'inherit', lineHeight: '24px', zIndex: 1 }}>{chName}</span>
+                      <div style={{ position: 'relative', width: 288, height: 32, display: 'inline-block' }}>
+                        <span aria-hidden style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'center', padding: '8px 8px', color: nameColor, fontWeight: nameStyle?.bold ? 700 : 500, fontStyle: nameStyle?.italic ? 'italic' : 'normal', textDecoration: nameStyle?.underline ? 'underline' : nameStyle?.strikethrough ? 'line-through' : 'none', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 14, fontFamily: 'inherit', lineHeight: '24px', zIndex: 1 }}>{chName}</span>
                         <input
                           value={chName}
                           onChange={e => {
@@ -312,12 +312,12 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                             next[newName] = existing;
                             persistStyles(buttonStyles, next);
                           }}
-                          style={{ width: '100%', height: '100%', position: 'relative', zIndex: 2, background: 'transparent', border: '1px solid var(--gray-a6)', borderRadius: 6, boxSizing: 'border-box', padding: '4px 8px', color: 'transparent', caretColor: nameColor, outline: 'none', fontSize: 14, fontFamily: 'inherit', fontWeight: nameStyle?.bold ? 700 : 500, fontStyle: nameStyle?.italic ? 'italic' : 'normal', textDecoration: nameStyle?.underline ? 'underline' : nameStyle?.strikethrough ? 'line-through' : 'none', lineHeight: '24px' }}
+                          style={{ width: '100%', height: '100%', position: 'relative', zIndex: 2, background: 'transparent', border: '1px solid var(--gray-a6)', borderRadius: 8, boxSizing: 'border-box', padding: '8px 8px', color: 'transparent', caretColor: nameColor, outline: 'none', fontSize: 14, fontFamily: 'inherit', fontWeight: nameStyle?.bold ? 700 : 500, fontStyle: nameStyle?.italic ? 'italic' : 'normal', textDecoration: nameStyle?.underline ? 'underline' : nameStyle?.strikethrough ? 'line-through' : 'none', lineHeight: '24px' }}
                         />
                       </div>
                       <Popover.Root>
                         <Popover.Trigger>
-                          <div role="button" aria-label="Pick color" style={{ width: 28, height: 28, backgroundColor: nameColor, border: '1px solid var(--gray-a7)', borderRadius: 4, cursor: 'pointer' }} />
+                          <div role="button" aria-label="Pick color" style={{ width: 32, height: 32, backgroundColor: nameColor, border: '1px solid var(--gray-a7)', borderRadius: 8, cursor: 'pointer' }} />
                         </Popover.Trigger>
                         <Popover.Content style={{ width: 260 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -347,7 +347,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                       <Text size="2" style={{ minWidth: 90 }}>Text</Text>
                       <Popover.Root>
                         <Popover.Trigger>
-                          <div role="button" aria-label="Pick color" style={{ width: 28, height: 28, backgroundColor: textColor, border: '1px solid var(--gray-a7)', borderRadius: 4, cursor: 'pointer' }} />
+                          <div role="button" aria-label="Pick color" style={{ width: 32, height: 32, backgroundColor: textColor, border: '1px solid var(--gray-a7)', borderRadius: 8, cursor: 'pointer' }} />
                         </Popover.Trigger>
                         <Popover.Content style={{ width: 260 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -417,7 +417,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                   style={{
                     backgroundColor: id === selectedButtonId ? '#26292B' : '#1C1F20',
                     border: id === selectedButtonId
-                      ? '1px solid #D4AF37'
+                      ? '1px solid var(--accent-9)'
                       : (selectedLabelEmpty && id !== selectedButtonId
                         ? '1px solid #141718'
                         : '1px solid var(--gray-a7)'),
@@ -426,9 +426,9 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                     fontStyle: style?.italic ? 'italic' : 'normal',
                     textDecoration: style?.underline ? 'underline' : style?.strikethrough ? 'line-through' : 'none',
                     cursor: selectedLabelEmpty && id !== selectedButtonId ? 'not-allowed' : 'pointer',
-                    borderRadius: 6,
-                    padding: '6px 10px',
-                    lineHeight: '20px',
+                    borderRadius: 8,
+                    padding: '8px 8px',
+                    lineHeight: '24px',
                     display: 'inline-block',
                     outline: 'none',
                     userSelect: 'none'
@@ -455,10 +455,10 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                 const labelEmpty = labelValue.trim() === '';
                 return (
                   <Flex align="center" gap="3" wrap="wrap">
-                    <div style={{ position: 'relative', width: 280, height: 32, display: 'inline-block' }}>
+                    <div style={{ position: 'relative', width: 288, height: 32, display: 'inline-block' }}>
                       <span
                         aria-hidden
-                        style={{
+                          style={{
                           position: 'absolute',
                           left: 0,
                           right: 0,
@@ -466,7 +466,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                           bottom: 0,
                           display: 'flex',
                           alignItems: 'center',
-                          padding: '4px 8px',
+                            padding: '8px 8px',
                           color: labelEmpty ? '#FF4D4F' : (draftValid ? draft : currentColor),
                           fontWeight: labelEmpty ? 500 : (style?.bold ? 700 : 500),
                           fontStyle: labelEmpty ? 'normal' : (style?.italic ? 'italic' : 'normal'),
@@ -490,16 +490,16 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                           persistStyles(next, speakerStyles);
                         }}
                         placeholder=""
-                        style={{
+                          style={{
                           width: '100%',
                           height: '100%',
                           position: 'relative',
                           zIndex: 2,
                           background: 'transparent',
                           border: labelEmpty ? '1px solid #FF4D4F' : '1px solid var(--gray-a6)',
-                          borderRadius: 6,
+                            borderRadius: 8,
                           boxSizing: 'border-box',
-                          padding: '4px 8px',
+                            padding: '8px 8px',
                           color: 'transparent',
                           caretColor: draftValid ? draft : currentColor,
                           outline: 'none',
@@ -522,7 +522,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                             height: 28,
                             backgroundColor: draftValid ? draft : currentColor,
                             border: '1px solid var(--gray-a7)',
-                            borderRadius: 4,
+                            borderRadius: 8,
                             cursor: 'pointer'
                           }}
                         />

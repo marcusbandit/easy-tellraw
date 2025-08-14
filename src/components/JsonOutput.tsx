@@ -161,7 +161,7 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
   })();
 
   return (
-    <div style={{ marginTop: 12, maxWidth: '100%' }}>
+    <div style={{ marginTop: 8, maxWidth: '100%' }}>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
         {/* Target selector */}
         <SegmentedControl.Root value={selectedTarget} onValueChange={handleTargetChange} style={{ width: '120px' }}>
@@ -172,9 +172,9 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
         {/* Copy and Collapse/Expand buttons */}
         <Button size="2" variant="surface" onClick={handleToggle} style={{ display: 'flex', alignItems: 'center' }}>
           {collapsed ? (
-            <><ChevronRightIcon height={16} width={16} style={{ marginRight: '4px' }} />Expand</>
+            <><ChevronRightIcon height={16} width={16} style={{ marginRight: '8px' }} />Expand</>
           ) : (
-            <><ChevronDownIcon height={16} width={16} style={{ marginRight: '4px' }} />Collapse</>
+            <><ChevronDownIcon height={16} width={16} style={{ marginRight: '8px' }} />Collapse</>
           )}
         </Button>
       </div>
@@ -182,7 +182,7 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
         style={{
           width: '100%', boxSizing: 'border-box', height: 200, overflow: 'auto',
           backgroundColor: '#1e1e1e', border: '1px solid #333',
-          padding: '8px', borderRadius: '4px', fontFamily: 'minecraftiaregular, sans-serif',
+          padding: '8px', borderRadius: '8px', fontFamily: 'minecraftiaregular, sans-serif',
           margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', textAlign: 'left'
         }}
       >

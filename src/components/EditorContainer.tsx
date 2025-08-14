@@ -152,7 +152,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
         <Box style={{ color: 'var(--gray-a12)' }}>
           <Heading size="5" mb="4">Minecraft Tellraw Editor</Heading>
           {/* Global import toolbar moved to App.tsx */}
-          <Box style={{ backgroundColor: '#1e1e1e', border: '1px solid #333', padding: '12px', borderRadius: '4px', marginBottom: '16px', minHeight: '200px' }}>
+          <Box style={{ backgroundColor: '#1e1e1e', border: '1px solid #333', padding: '16px', borderRadius: '8px', marginBottom: '16px', minHeight: '200px' }}>
             <Editable
               spellCheck={false}
               autoCorrect="off"
@@ -271,7 +271,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
                 const paste = event.clipboardData.getData('text/plain');
                 Transforms.insertText(editor, paste);
               }}
-              style={{ outline: 'none' }}
+              style={{ outline: 'none', lineHeight: 1.15 }}
             />
           </Box>
           <JsonOutput
@@ -330,13 +330,13 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
                     backgroundColor: 'var(--gray-a2)',
                     color: 'white',
                     border: '1px solid var(--gray-a6)',
-                    borderRadius: '4px',
-                    minHeight: '300px',
+                    borderRadius: '8px',
+                    minHeight: '304px',
                     overflow: 'auto'
                   }}
                 />
                 {importError && (
-                  <Text as="p" size="2" style={{ color: 'var(--red9)', marginTop: '4px' }}>
+                  <Text as="p" size="2" style={{ color: 'var(--red9)', marginTop: '8px' }}>
                     Invalid JSON: {importError}
                   </Text>
                 )}

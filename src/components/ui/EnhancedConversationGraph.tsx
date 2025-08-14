@@ -19,16 +19,16 @@ const SHOW_NODE_DEBUG = false;
 const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineData[]; options: OptionData[]; isHovered?: boolean; isSelected?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number } }> = ({ data }) => {
   return (
     <div style={{
-      padding: '12px',
-      borderRadius: 10,
+      padding: '16px',
+      borderRadius: 8,
       backgroundColor: data.isSelected ? '#303029' : (data.isHovered ? '#333333' : '#2a2a2a'),
-      border: data.isSelected ? '1px solid #D4AF37' : `1px solid ${data.isHovered ? '#aaaaaa' : '#444'}`,
+      border: data.isSelected ? '1px solid var(--accent-9)' : `1px solid ${data.isHovered ? '#aaaaaa' : '#444'}`,
       minWidth: 220,
       display: 'grid',
       gridTemplateColumns: '1fr auto',
-      columnGap: 12,
+      columnGap: 16,
       boxShadow: data.isSelected
-        ? '0 0 0 2px rgba(212,175,55,0.18)'
+        ? '0 0 0 2px rgba(18,165,148,0.25)'
         : (data.isHovered ? '0 0 0 2px rgba(255,255,255,0.15)' : 'none'),
       transition: 'border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease',
       textAlign: 'left',
@@ -47,14 +47,19 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
         </div>
       )}
       {/* Center-left target handle ("in" anchor) */}
-      <Handle type="target" position={Position.Left} id="in" style={{ left: -8, background: '#666', width: 10, height: 10, top: '50%', transform: 'translateY(-50%)' }} />
-      <div>
+      {/* Target handle aligned as originally (relative to node edge) */}
+      <Handle type="target" position={Position.Left} id="in" style={{ left: -8, background: '#666', width: 8, height: 8, top: '50%', transform: 'translateY(-50%)' }} />
+      <div style={{ maxWidth: 480, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
         <div style={{ fontWeight: 700, marginBottom: 8 }}>{data.label}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div>
           {data.lines.map((l, i) => {
             const containerStyle: CSSProperties = {
               fontSize: 12,
               textAlign: 'left',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+              whiteSpace: 'normal',
+              lineHeight: 1.15,
             };
             const nameStyle: CSSProperties | undefined = l.namePrefix ? {
               color: l.nameColor || '#c8c8c8',
@@ -82,14 +87,14 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
                         fontStyle: r.italic ? 'italic' : (textStyle.fontStyle as any),
                         textDecoration: [r.underline ? 'underline' : '', r.strikethrough ? 'line-through' : ''].filter(Boolean).join(' ') || (textStyle.textDecoration as any),
                       };
-                      return <span key={ri} style={rStyle}>{r.text}</span>;
+                       return <span key={ri} style={rStyle}>{r.text}</span>;
                     })}
                     {' '}
                   </>
                 ) : (
-                  <>
-                    <span style={textStyle}>{l.text}</span>{' '}
-                  </>
+                   <>
+                     <span style={{ ...textStyle, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{l.text}</span>{' '}
+                   </>
                 )}
                 {l.choices && l.choices.length > 0 && (
                   <>
@@ -111,18 +116,18 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
           })}
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', marginRight: -32 }}>
         {data.options.map((opt) => {
           const style: CSSProperties = {
             color: opt.color || '#cccccc',
-            fontSize: 12,
+            fontSize: 14,
             fontWeight: opt.bold ? 700 : 400,
             fontStyle: opt.italic ? 'italic' : 'normal',
             textDecoration: [opt.underline ? 'underline' : '', opt.strikethrough ? 'line-through' : ''].filter(Boolean).join(' ') || undefined,
-            background: 'rgba(255,255,255,0.06)',
+            background: '#3C3C3C',
             border: '1px solid #555',
-            borderRadius: 6,
-            padding: '2px 6px',
+            borderRadius: 8,
+            padding: '8px 8px',
             whiteSpace: 'normal',
             overflow: 'visible',
             textOverflow: 'clip',
@@ -130,7 +135,8 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
           };
           return (
             <div key={opt.id} style={{ position: 'relative' }}>
-              <Handle type="source" position={Position.Right} id={opt.id} style={{ right: -8, background: opt.color || '#888', width: 10, height: 10 }} />
+              {/* Keep handle positioned just outside its pill */}
+              <Handle type="source" position={Position.Right} id={opt.id} style={{ right: -8, background: opt.color || '#888', width: 8, height: 8 }} />
               <div style={style}>[{opt.label}]</div>
             </div>
           );
@@ -143,7 +149,7 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
 const GhostNode: React.FC<{ data: { label: string; isHovered?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number } }> = ({ data }) => {
   return (
     <div style={{
-      padding: '8px 10px',
+      padding: '8px 8px',
       borderRadius: 8,
       backgroundColor: data.isHovered ? 'rgba(60,60,60,0.7)' : 'rgba(45,45,45,0.6)',
       border: data.isHovered ? '1px dashed #aaa' : '1px dashed #555',
@@ -165,7 +171,7 @@ const GhostNode: React.FC<{ data: { label: string; isHovered?: boolean; debugHei
           <div>{`Total: ${Math.round((data.debugTotalWidth ?? data.debugOwnWidth ?? 0) as number)}`}</div>
         </div>
       )}
-      <Handle type="target" position={Position.Left} id="in" style={{ left: -8, background: '#666', width: 10, height: 10, top: '50%', transform: 'translateY(-50%)' }} />
+      <Handle type="target" position={Position.Left} id="in" style={{ left: -8, background: '#666', width: 8, height: 8, top: '50%', transform: 'translateY(-50%)' }} />
       {data.label}
     </div>
   );
@@ -1660,7 +1666,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
   }
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid #2b2b2b', boxShadow: '0 0 0 1px rgba(255,255,255,0.03) inset' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', borderRadius: 8, overflow: 'hidden', border: '1px solid #2b2b2b', boxShadow: '0 0 0 1px rgba(255,255,255,0.03) inset' }}>
       {/* Physics control panel */}
       {/* Controls removed (no sliders). Smoothing and link distance are managed in code. */}
       <ReactFlowProvider>
@@ -1706,7 +1712,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
           }}
         >
           <Controls />
-          <Background color="#333" gap={20} />
+          <Background color="#333" gap={16} />
           <MiniMap style={{ backgroundColor: '#2a2a2a', borderRadius: 8, overflow: 'hidden' }} nodeColor="#666" maskColor="rgba(0, 0, 0, 0.5)" />
           {/* Overlay: target centers as red X markers (debug only, not influenced by physics) */}
           {DEBUG_SHOW_TARGETS && (

@@ -17,6 +17,9 @@ button.yes color=#3ade2c
 button.no color=#ec3456
 @endstyles
 
+@max_width_demo
+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
+
 @start
 {character.Narrator} {italic}The wind howls through the empty streets...{/}
 {character.Jordan} Kara, we need to decide. [Go to the market -> @market_entry]{style=primary} [Head to the guard tower -> @guard_tower_entry]{style=warning} [Check map -> ui:map/open]{color=#00FFC8}

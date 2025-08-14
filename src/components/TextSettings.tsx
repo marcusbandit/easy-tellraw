@@ -216,7 +216,7 @@ export const ColorButton = ({ editor, color: initialColor, path }: { editor: any
             </Tooltip.Trigger>
             <Tooltip.Portal>
               <Tooltip.Content side="top" align="center" sideOffset={4} style={{ zIndex: 999, pointerEvents: 'none' }}>
-                <div style={{ padding: '4px 8px', backgroundColor: '#333', borderRadius: '4px', fontSize: '12px', color: preset.hex }}>
+                <div style={{ padding: '8px 8px', backgroundColor: '#333', borderRadius: '8px', fontSize: '12px', color: preset.hex }}>
                   {preset.name}
                 </div>
                 <Tooltip.Arrow style={{ fill: '#333' }} />

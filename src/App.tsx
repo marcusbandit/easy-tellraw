@@ -529,10 +529,10 @@ const App: React.FC = () => {
               style={{
                 backgroundColor: '#18191B',
                 border: '1px solid var(--gray-a6)',
-                padding: '12px',
-                borderRadius: '6px',
-                marginTop: '12px',
-                marginBottom: '12px',
+                padding: '16px',
+                borderRadius: '8px',
+                marginTop: '16px',
+                marginBottom: '16px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-start',
@@ -707,7 +707,7 @@ const App: React.FC = () => {
                                     caretColor: 'var(--gray-a12)',
                                     fontSize: '22px',
                                     fontWeight: 600,
-                                    padding: '2px 0',
+                                    padding: '0 0',
                                     marginLeft: 0,
                                     width: 'auto',
                                     minWidth: 0,
@@ -767,7 +767,7 @@ const App: React.FC = () => {
             )}
 
             {activeTab === 'raw' && (
-              <Tabs.Content value="raw" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <Tabs.Content value="raw" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <RawTab
                   dialogueSource={dialogueSource}
                   onChange={(code) => {
