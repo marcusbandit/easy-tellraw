@@ -1,6 +1,6 @@
 {
   "name": "minecraft-dialoguepack-editor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "homepage": ".",
   "main": "main.js",
@@ -48,9 +48,10 @@
     "react-start": "react-scripts start",
     "start": "ELECTRON_START_URL=http://localhost:3000 concurrently \"npm run react-start\" \"wait-on http://localhost:3000 && electron --ozone-platform-hint=auto .\"",
     "build": "react-scripts build",
-    "dist": "electron-builder",
-    "dist:linux": "electron-builder --linux AppImage deb pacman",
-    "dist:win": "electron-builder --win nsis zip",
+    "dist": "npm run build && electron-builder",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb pacman",
+    "dist:win": "npm run build && electron-builder --win nsis zip",
+    "dist:win:zip": "npm run build && electron-builder --win zip",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

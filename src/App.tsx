@@ -10,6 +10,7 @@ import EnhancedConversationGraph from "./components/ui/EnhancedConversationGraph
 import { useTellrawSegments } from "./hooks/useTellrawSegments";
 import { Flex, Tabs, Box, Button, Card, Text, AlertDialog } from "@radix-ui/themes";
 import PresetsPanel from "./components/PresetsPanel";
+import PresetButtonsPanel from "./components/PresetButtonsPanel";
 import { Slate, withReact } from "slate-react";
 import { withHistory } from "slate-history";
 import { Transforms } from "slate";
@@ -305,7 +306,20 @@ const App: React.FC = () => {
           const cUnderline = choice.underline !== undefined ? !!choice.underline : !!btn?.underline;
           const cStrike = choice.strikethrough !== undefined ? !!choice.strikethrough : !!btn?.strikethrough;
           const label = (choice.text && choice.text.length > 0) ? choice.text : (btn?.label || choice.className || 'button');
-          children.push({ text: `[${label}]`, color: cColor, bold: cBold, italic: cItalic, underline: cUnderline, strikethrough: cStrike });
+          // Build click command from target
+          let command: string | undefined;
+          const tgt = choice.target || '';
+          if (tgt.startsWith('@')) {
+            const ref = tgt.slice(1);
+            command = `function mcnodes:nodes/${ref}`;
+          } else if (/^[a-z0-9_\-]+:[A-Za-z0-9_\-/.]+$/.test(tgt)) {
+            command = `function ${tgt}`;
+          } else if (tgt.trim()) {
+            // Fallback to raw target as command
+            command = tgt;
+          }
+          const click_event = command ? { action: 'run_command', command } : undefined;
+          children.push({ text: `[${label}]`, color: cColor, bold: cBold, italic: cItalic, underline: cUnderline, strikethrough: cStrike, ...(click_event ? { click_event } : {}) });
           if (idx < line.choices.length - 1) children.push({ text: ' ', color: baseColor, bold: baseBold, italic: baseItalic, underline: baseUnderline, strikethrough: baseStrike });
         });
       }
@@ -732,6 +746,12 @@ const App: React.FC = () => {
                           setClickFieldFocused={setClickFieldFocused}
                           activeSegmentIndex={activeSegmentIndex}
                           segmentPaths={segmentPaths}
+                        />
+                      </div>
+                      <div style={{ width: 320, minWidth: 300, maxWidth: 380, display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'auto' }}>
+                        <PresetButtonsPanel
+                          onUseCommand={(cmd) => importJson(cmd)}
+                          target={target}
                         />
                       </div>
                     </Flex>

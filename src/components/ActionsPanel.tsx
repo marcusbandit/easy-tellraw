@@ -39,6 +39,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
 }) => {
   const editor = useSlate();
   const isUpdatingRef = React.useRef(false);
+  const userActionRef = React.useRef(false);
   
   const ActionIcon = (clickAction === 'run_command' || clickAction === 'suggest_command')
     ? RocketIcon
@@ -46,10 +47,14 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       ? Link2Icon
       : CopyIcon;
 
-  // Apply clickAction changes immediately to the editor model
+  // Apply clickAction changes only when user changes the segmented control
   React.useEffect(() => {
     // Skip if we're already updating to prevent infinite loops
     if (isUpdatingRef.current) {
+      return;
+    }
+    // Only run when the change was initiated by the user (not when selection syncs state)
+    if (!userActionRef.current) {
       return;
     }
     
@@ -101,6 +106,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
     } catch (error) {
       console.warn('🎯 Error updating click event:', error);
     } finally {
+      userActionRef.current = false;
       // Reset the flag after a short delay to allow onChange to complete
       setTimeout(() => {
         isUpdatingRef.current = false;
@@ -112,7 +118,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
     <Card size="2" variant="surface">
       <Heading size="5" mb="2">Actions</Heading>
       <Heading size="2" mb="1" mt="2">Click</Heading>
-      <SegmentedControl.Root value={clickAction} onValueChange={setClickAction} style={{ width: '100%', marginTop: '8px' }}>
+      <SegmentedControl.Root value={clickAction} onValueChange={(v) => { userActionRef.current = true; setClickAction(v); }} style={{ width: '100%', marginTop: '8px' }}>
         <SegmentedControl.Item value="run_command">Run command</SegmentedControl.Item>
         <SegmentedControl.Item value="suggest_command">Suggest command</SegmentedControl.Item>
         <SegmentedControl.Item value="copy_to_clipboard">Copy to clipboard</SegmentedControl.Item>

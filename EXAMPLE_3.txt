@@ -35,9 +35,8 @@ Stab yourself? [Stab stab -> execute as @s run damage @s sword 10]
 {bold}Tools{/}: [Lockpick -> shop:tools/buy_lockpick]{style=shop_item} [Lantern -> shop:tools/buy_lantern]{style=shop_item} [Rope -> shop:tools/buy_rope]{style=shop_item} [Chain -> shop:tools/buy_chain]{style=shop_item} [Map -> shop:tools/buy_map]{style=shop_item}  
 {bold}Food{/}: [Apple -> shop:food/buy_apple]{style=shop_item}
 {bold}Misc{/}: [Mysterious Box -> shop:misc/buy_mystery_box]{style=warning}  
-{character.Kara} Or we could {style=danger}steal{/} something. [Steal -> @market_steal]{style=danger}  
+{character.Kara} Or we could {color=#0FF}steal{/} something. [Steal -> @market_steal]{style=danger}  
 {character.Merchant} Anything else? [Ask about rumors -> @market_rumors] [Ask for discount -> @market_discount] [{button.Back} -> @market_entry]
-{/}
 
 @market_discount
 {character.Merchant} For you, a special price! [Accept offer -> shop:apply_discount]{style=shop_item} [Haggle more -> @market_haggle]{style=warning} [Decline -> @market_browse]
