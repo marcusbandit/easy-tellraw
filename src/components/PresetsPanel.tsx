@@ -1,7 +1,6 @@
 import React from 'react';
 import { Card, Flex, Heading, Text, TextField, Button, Separator, Popover } from '@radix-ui/themes';
 import { HexColorPicker } from 'react-colorful';
-import { Preset } from '../lib/presets';
 import { quotes } from '../lib/quotes';
 import { DialogueGraph } from '../types/dialogue';
 
@@ -11,20 +10,6 @@ export interface PresetsPanelProps {
   onUpdateStyles?: (styles: DialogueGraph['styles']) => void;
   onRequestRawUpdate?: (nextRaw: string) => void;
 }
-
-type ParamValues = Record<string, string>;
-
-const buildCommandFromPreset = (preset: Preset, params: ParamValues, target: string): string => {
-  // Replace parameter placeholders $(name)
-  let template = preset.template;
-  template = template.replace(/\$\(([^)]+)\)/g, (_m, p1) => params[p1] ?? '');
-  // Replace $tellraw @x with selected target
-  template = template.replace(/\$tellraw\s+@[^\s]+/g, `tellraw ${target}`);
-  // Remove comment lines and collapse whitespace
-  const lines = template.split(/\r?\n/).filter(l => !/^\s*#/.test(l));
-  const joined = lines.join(' ').replace(/\s+/g, ' ').trim();
-  return joined;
-};
 
 const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpdateStyles, onRequestRawUpdate }) => {
 
@@ -101,7 +86,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
     });
   }, [speakerStyles]);
   const [selectedButtonId, setSelectedButtonId] = React.useState<string | null>(null);
-  const colorInputRef = React.useRef<HTMLInputElement | null>(null);
+  // Removed unused colorInputRef
   // Local drafts for hex input per button to allow partial editing without snapping
   const [buttonColorDraft, setButtonColorDraft] = React.useState<Record<string, string>>({});
   const selectedLabelEmpty = React.useMemo(() => {

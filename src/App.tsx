@@ -312,7 +312,7 @@ const App: React.FC = () => {
           if (tgt.startsWith('@')) {
             const ref = tgt.slice(1);
             command = `function mcnodes:nodes/${ref}`;
-          } else if (/^[a-z0-9_\-]+:[A-Za-z0-9_\-/.]+$/.test(tgt)) {
+          } else if (/^[a-z0-9_-]+:[A-Za-z0-9_./-]+$/.test(tgt)) {
             command = `function ${tgt}`;
           } else if (tgt.trim()) {
             // Fallback to raw target as command

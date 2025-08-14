@@ -115,7 +115,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
     } catch (err: any) {
       alert('Failed to open dialogue file: ' + (err?.message || String(err)));
     }
-  }, [ipcRenderer, onImportDialogue]);
+  }, [ipcRenderer, onImportDialogue, onDialogueSourceChange]);
 
   // On mount: if we have a cached dialogue path, load it and start watching
   useEffect(() => {
@@ -144,20 +144,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ipcRenderer, watchedFilePath]);
 
-  // Open native file dialog for dialogue import
-  const handleOpenDialogueFile = async () => {
-    if (!ipcRenderer) {
-      // Fallback to hidden input if not in Electron
-      dialogueFileInputRef.current?.click();
-      return;
-    }
-    const result = await ipcRenderer.invoke('open-file-dialog', {
-      filters: [{ name: 'Dialogue Text', extensions: ['txt'] }]
-    });
-    if (!result?.canceled && result.filePaths && result.filePaths[0]) {
-      await loadDialogueFromPath(result.filePaths[0], true, true);
-    }
-  };
+  // Removed unused handleOpenDialogueFile
 
   return (
     <section style={{ width: '100%', maxWidth: 'none' }}>

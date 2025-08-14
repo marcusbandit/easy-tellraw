@@ -19,8 +19,8 @@ function createWindow() {
   // Determine URL: development server or production build
   const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, 'build', 'index.html')}`;
   win.loadURL(startUrl);
-  // Open devtools when loading from dev server
-  if (process.env.ELECTRON_START_URL) {
+  // Optionally open devtools in dev only when explicitly enabled
+  if (process.env.ELECTRON_START_URL && process.env.ELECTRON_OPEN_DEVTOOLS === '1') {
     win.webContents.openDevTools();
   }
 }

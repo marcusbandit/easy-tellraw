@@ -45,17 +45,20 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "react-start": "react-scripts start",
+    "react-start": "NODE_OPTIONS=--no-deprecation react-scripts start",
     "start": "ELECTRON_START_URL=http://localhost:3000 concurrently \"npm run react-start\" \"wait-on http://localhost:3000 && electron --ozone-platform-hint=auto .\"",
-    "build": "react-scripts build",
+    "build": "GENERATE_SOURCEMAP=false react-scripts build",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux AppImage deb pacman",
     "dist:win": "npm run build && electron-builder --win nsis zip",
     "dist:win:zip": "npm run build && electron-builder --win zip",
+    "dist:win:unpacked": "npm run build && electron-builder --win dir",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
   "build": {
+    "asar": true,
+    "compression": "maximum",
     "appId": "com.marcusbandit.easy-tellraw",
     "productName": "Easy Tellraw",
     "files": [
@@ -68,8 +71,7 @@
     },
     "win": {
       "target": [
-        "nsis",
-        "zip"
+        "dir"
       ],
       "icon": "assets/icon.ico"
     },

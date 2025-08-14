@@ -183,7 +183,6 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const didSimulateRef = useRef(false);
   const animFrameRef = useRef<number | null>(null);
-  const animRunningRef = useRef(false);
   const draggedIdsRef = useRef<Set<string>>(new Set());
   // Snapshot of positions at drag start to freeze layout targets during drag
   const frozenPosDuringDragRef = useRef<Record<string, { x: number; y: number }>>({});
@@ -268,11 +267,84 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
   const totalWidthMapRef = useRef<Record<string, number>>({});
   const totalsDirtyRef = useRef<boolean>(true);
   const lastDebugUpdateRef = useRef<number>(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const [debugVersion, setDebugVersion] = useState(0);
   // Physics parameters (tunable)
   // Link distance is now computed dynamically per parent; keep only smoothing
-  const [smoothingAlpha, setSmoothingAlpha] = useState(0.1);
+  const [smoothingAlpha] = useState(0.1);
   const [simTick, setSimTick] = useState(0);
+
+  // Idle-compute totals when dirty (hoisted so effects can depend on it)
+  const scheduleTotalsCompute = useCallback(() => {
+    if (!totalsDirtyRef.current) return;
+    const run = () => {
+      if (!totalsDirtyRef.current) return;
+      const mapping = parentToChildrenRef.current;
+      const own = ownHeightMapRef.current;
+      const ownW = ownWidthMapRef.current;
+      const GAP = 12;
+      const totals: Record<string, number> = {};
+      const totalsW: Record<string, number> = {};
+      const visiting = new Set<string>();
+      const visitingW = new Set<string>();
+      const compute = (id: string): number => {
+        if (totals[id] !== undefined) return totals[id];
+        if (visiting.has(id)) return own[id] ?? 0;
+        visiting.add(id);
+        const kids = mapping[id] || [];
+        let total: number;
+        if (kids.length === 0) {
+          total = own[id] ?? 0;
+        } else {
+          let sum = 0;
+          for (const k of kids) sum += compute(k);
+          total = sum + GAP * Math.max(0, kids.length - 1);
+        }
+        visiting.delete(id);
+        totals[id] = total;
+        return total;
+      };
+      const computeW = (id: string): number => {
+        if (totalsW[id] !== undefined) return totalsW[id];
+        if (visitingW.has(id)) return ownW[id] ?? 0;
+        visitingW.add(id);
+        const kids = mapping[id] || [];
+        let total: number;
+        if (kids.length === 0) {
+          total = ownW[id] ?? 0;
+        } else if (kids.length === 1) {
+          const child = kids[0];
+          const link = Math.max(120, (own[id] ?? 0) * 0.25);
+          total = (ownW[id] ?? 0) + link + computeW(child);
+        } else {
+          // For branching, take the max width among children chains side-by-side
+          let maxChild = 0;
+          for (const k of kids) {
+            const w = computeW(k);
+            if (w > maxChild) maxChild = w;
+          }
+          const link = Math.max(120, (own[id] ?? 0) * 0.25);
+          total = (ownW[id] ?? 0) + link + maxChild;
+        }
+        visitingW.delete(id);
+        totalsW[id] = total;
+        return total;
+      };
+      (graphNodes as any[]).forEach((n: any) => compute(n.id));
+      (graphNodes as any[]).forEach((n: any) => computeW(n.id));
+      totalHeightMapRef.current = totals;
+      totalWidthMapRef.current = totalsW;
+      totalsDirtyRef.current = false;
+      const now = Date.now();
+      if (now - lastDebugUpdateRef.current > 180) {
+        lastDebugUpdateRef.current = now;
+        setDebugVersion(v => v + 1);
+      }
+    };
+    const ric: any = (window as any)?.requestIdleCallback;
+    if (typeof ric === 'function') ric(run, { timeout: 300 });
+    else setTimeout(run, 0);
+  }, [graphNodes]);
 
   const layout = useMemo(() => {
     if (!graph) return { nodes: [], edges: [] };
@@ -611,7 +683,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     parentToChildrenRef.current = mapping;
     totalsDirtyRef.current = true;
     scheduleTotalsCompute();
-  }, [graphNodes, edges]);
+  }, [graphNodes, edges, scheduleTotalsCompute]);
 
   // Track measured heights and mark totals dirty if changed
   useEffect(() => {
@@ -644,79 +716,9 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       totalsDirtyRef.current = true;
       scheduleTotalsCompute();
     }
-  }, [graphNodes]);
+  }, [graphNodes, scheduleTotalsCompute]);
 
-  // Idle-compute totals when dirty
-  const scheduleTotalsCompute = useCallback(() => {
-    if (!totalsDirtyRef.current) return;
-    const run = () => {
-      if (!totalsDirtyRef.current) return;
-      const mapping = parentToChildrenRef.current;
-      const own = ownHeightMapRef.current;
-      const ownW = ownWidthMapRef.current;
-      const GAP = 12;
-      const totals: Record<string, number> = {};
-      const totalsW: Record<string, number> = {};
-      const visiting = new Set<string>();
-      const visitingW = new Set<string>();
-      const compute = (id: string): number => {
-        if (totals[id] !== undefined) return totals[id];
-        if (visiting.has(id)) return own[id] ?? 0;
-        visiting.add(id);
-        const kids = mapping[id] || [];
-        let total: number;
-        if (kids.length === 0) {
-          total = own[id] ?? 0;
-        } else {
-          let sum = 0;
-          for (const k of kids) sum += compute(k);
-          total = sum + GAP * Math.max(0, kids.length - 1);
-        }
-        visiting.delete(id);
-        totals[id] = total;
-        return total;
-      };
-      const computeW = (id: string): number => {
-        if (totalsW[id] !== undefined) return totalsW[id];
-        if (visitingW.has(id)) return ownW[id] ?? 0;
-        visitingW.add(id);
-        const kids = mapping[id] || [];
-        let total: number;
-        if (kids.length === 0) {
-          total = ownW[id] ?? 0;
-        } else if (kids.length === 1) {
-          const child = kids[0];
-          const link = Math.max(120, (own[id] ?? 0) * 0.25);
-          total = (ownW[id] ?? 0) + link + computeW(child);
-        } else {
-          // For branching, take the max width among children chains side-by-side
-          let maxChild = 0;
-          for (const k of kids) {
-            const w = computeW(k);
-            if (w > maxChild) maxChild = w;
-          }
-          const link = Math.max(120, (own[id] ?? 0) * 0.25);
-          total = (ownW[id] ?? 0) + link + maxChild;
-        }
-        visitingW.delete(id);
-        totalsW[id] = total;
-        return total;
-      };
-      (graphNodes as any[]).forEach((n: any) => compute(n.id));
-      (graphNodes as any[]).forEach((n: any) => computeW(n.id));
-      totalHeightMapRef.current = totals;
-      totalWidthMapRef.current = totalsW;
-      totalsDirtyRef.current = false;
-      const now = Date.now();
-      if (now - lastDebugUpdateRef.current > 180) {
-        lastDebugUpdateRef.current = now;
-        setDebugVersion(v => v + 1);
-      }
-    };
-    const ric: any = (window as any)?.requestIdleCallback;
-    if (typeof ric === 'function') ric(run, { timeout: 300 });
-    else setTimeout(run, 0);
-  }, [graphNodes]);
+  // Idle-compute totals when dirty (duplicate removed)
 
   // Track container size and compute world center
   useEffect(() => {
@@ -970,14 +972,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     // Use cached children map for stacking
     const parentToChildren: Record<string, string[]> = parentToChildrenRef.current;
 
-    const anchorPoint = (id: string, side: 'left' | 'right') => {
-      const p = posRef.current[id];
-      const d = dims[id];
-      if (!p || !d) return { x: 0, y: 0 };
-      const x = side === 'right' ? p.x + d.w : p.x;
-      const y = p.y + d.h / 2;
-      return { x, y };
-    };
+  // anchorPoint helper was unused; removed to satisfy lint
 
     const step = () => {
       if (graphNodes.length === 0) return;
@@ -1292,7 +1287,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
               }
             } else {
               // Extended capacity: recursively include deeper widths if needed
-              const curChildren = parentToChildren[curId] || [];
+              // const curChildren = parentToChildren[curId] || [];
               const extendedCapacity = computeRecursiveOwnCapacity(curId);
               if (extendedCapacity >= nextTotalW) {
                 // Move by current total height minus combined extent of children (with offsets), recursively deep
@@ -1498,7 +1493,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     animFrameRef.current = requestAnimationFrame(step);
     return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; };
-  }, [graphNodes, edges, setGraphNodes, smoothingAlpha, worldCenter, simTick, isLayoutHydrated, isSimDelayElapsed]);
+  }, [graphNodes, edges, setGraphNodes, smoothingAlpha, worldCenter, simTick, isLayoutHydrated, isSimDelayElapsed, saveLayoutCache, DEBUG_SHOW_TARGETS]);
 
   // Restart relaxation after a drag completes; provide smaller runs during drag
   const handleNodeDragStart = useCallback((_e: any, node: Node) => {
@@ -1575,7 +1570,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       // Persist the orphan's new location immediately
       saveLayoutCache();
     }
-  }, [saveLayoutCache]);
+  }, [saveLayoutCache, focusScene]);
 
   const handleNodeClick = useCallback((e: any, node: Node) => {
     const logicalId = (node as any).data?.id as string | undefined;
@@ -1651,7 +1646,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
         style: isHovered ? { ...(n.style || {}), zIndex: 2 } : n.style,
       } as any;
     });
-  }, [graphNodes, hoveredSceneId, debugVersion]);
+  }, [graphNodes, hoveredSceneId, selectedSceneId]);
 
   if (!graph || graphNodes.length === 0) {
     return (

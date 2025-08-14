@@ -56,7 +56,7 @@ const RawTab: React.FC<RawTabProps> = ({
         if (range && range.startContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
           const text = range.startContainer.textContent || '';
           let index = range.startOffset;
-          const isWordChar = (ch: string) => /[A-Za-z0-9_@#\-]/.test(ch);
+          const isWordChar = (ch: string) => /[A-Za-z0-9_@#-]/.test(ch);
           let start = index;
           let end = index;
           while (start > 0 && isWordChar(text[start - 1])) start--;
@@ -70,7 +70,7 @@ const RawTab: React.FC<RawTabProps> = ({
           if (pos && pos.offsetNode && pos.offsetNode.nodeType === Node.TEXT_NODE) {
             const text = (pos.offsetNode.textContent as string) || '';
             let index = pos.offset || 0;
-            const isWordChar = (ch: string) => /[A-Za-z0-9_@#\-]/.test(ch);
+            const isWordChar = (ch: string) => /[A-Za-z0-9_@#-]/.test(ch);
             let start = index;
             let end = index;
             while (start > 0 && isWordChar(text[start - 1])) start--;
@@ -265,7 +265,7 @@ const RawTab: React.FC<RawTabProps> = ({
         if (!textarea || document.activeElement !== textarea) { setActiveRef(''); return; }
         const value = textarea.value || '';
         const caret = textarea.selectionEnd ?? 0;
-        const isWordChar = (ch: string) => /[A-Za-z0-9_\-@]/.test(ch);
+        const isWordChar = (ch: string) => /[A-Za-z0-9_@-]/.test(ch);
         let start = caret;
         let end = caret;
         while (start > 0 && isWordChar(value[start - 1])) start--;
@@ -292,7 +292,7 @@ const RawTab: React.FC<RawTabProps> = ({
     const knownStyleNames = new Set<string>();
     try {
       code.split(/\r?\n/).forEach((ln) => {
-        const m = ln.trim().match(/^style\.([A-Za-z0-9_\-]+)\b/i);
+        const m = ln.trim().match(/^style\.([A-Za-z0-9_-]+)\b/i);
         if (m) knownStyleNames.add(m[1]);
       });
     } catch {}
@@ -333,27 +333,27 @@ const RawTab: React.FC<RawTabProps> = ({
       code.split(/\r?\n/).forEach((ln) => {
         const t = ln.trim();
         let m: RegExpMatchArray | null;
-        if ((m = t.match(/^character\.([A-Za-z0-9_\-]+)\s+(.+)$/i))) {
+        if ((m = t.match(/^character\.([A-Za-z0-9_-]+)\s+(.+)$/i))) {
           knownCharacterNames.add(m[1].toLowerCase());
           const props = m[2];
-          const nameMatch = props.match(/(?:^|\s)name\s*=\s*([A-Za-z0-9_\-]+)/);
+          const nameMatch = props.match(/(?:^|\s)name\s*=\s*([A-Za-z0-9_-]+)/);
           if (nameMatch) knownCharacterNames.add(nameMatch[1].toLowerCase());
         } else if ((m = t.match(/^character\.(\d+)\s+(.+)$/i))) {
           const props = m[2];
-          const nameMatch = props.match(/(?:^|\s)name\s*=\s*([A-Za-z0-9_\-]+)/);
+          const nameMatch = props.match(/(?:^|\s)name\s*=\s*([A-Za-z0-9_-]+)/);
           if (nameMatch) knownCharacterNames.add(nameMatch[1].toLowerCase());
         }
-        if ((m = t.match(/^button\.([A-Za-z0-9_\-]+)\s+(.+)$/i))) {
+        if ((m = t.match(/^button\.([A-Za-z0-9_-]+)\s+(.+)$/i))) {
           knownButtonNames.add(m[1].toLowerCase());
         } else if ((m = t.match(/^button\.(\d+)\s+(.+)$/i))) {
           const idx = m[1];
           knownButtonNames.add(`button_${idx}`.toLowerCase());
           const props = m[2];
-          const labelMatch = props.match(/(?:^|\s)label\s*=\s*([A-Za-z0-9_\-]+)/);
+          const labelMatch = props.match(/(?:^|\s)label\s*=\s*([A-Za-z0-9_-]+)/);
           if (labelMatch) knownButtonNames.add(labelMatch[1].toLowerCase());
         }
         // Speaker lines like "Name: text" imply character existence
-        const speaker = t.match(/^([A-Za-z0-9_\-]+)(\{[^}]*\})?\s*:/);
+        const speaker = t.match(/^([A-Za-z0-9_-]+)(\{[^}]*\})?\s*:/);
         if (speaker) knownCharacterNames.add(speaker[1].toLowerCase());
       });
     } catch {}
@@ -383,7 +383,7 @@ const RawTab: React.FC<RawTabProps> = ({
       // Build underline ranges for unmatched braces and include adjacent token for visibility
       const U_START = '\u0005US';
       const U_END = '\u0006UE';
-      const isWordChar = (ch: string) => /[^\s\{\}\[\]]/.test(ch);
+      const isWordChar = (ch: string) => /[^\s{}\[\]]/.test(ch);
       const isSpace = (ch: string) => ch === ' ';
       const unmatchedOrdinals = computeUnmatchedBraceOrdinals(rawLine);
       type Range = { start: number; end: number };
@@ -462,7 +462,7 @@ const RawTab: React.FC<RawTabProps> = ({
           const inner = m.slice(1, -1);
           if (!inner || inner.startsWith('/')) return m;
           // Variables like {character.X} or {button.Y} do not require closing {/}
-          if (/^(character|button)\.[A-Za-z0-9_\-]+$/.test(inner)) return m;
+          if (/^(character|button)\.[A-Za-z0-9_-]+$/.test(inner)) return m;
           // If immediately after a choice [...] metadata, skip (that form does not require {/})
           const idx = s.indexOf(m);
           let p = idx - 1;
@@ -531,12 +531,12 @@ const RawTab: React.FC<RawTabProps> = ({
       };
       // Detect tokens in raw line and wrap them in out
       let mChar: RegExpExecArray | null;
-      const charRe = /\{character\.([A-Za-z0-9_\-]+)\}/g;
+      const charRe = /\{character\.([A-Za-z0-9_-]+)\}/g;
       while ((mChar = charRe.exec(rawLine)) !== null) {
         out = wrapUnknownVar('character', mChar[1], out);
       }
       let mBtn: RegExpExecArray | null;
-      const btnRe = /\{button\.([A-Za-z0-9_\-]+)\}/g;
+      const btnRe = /\{button\.([A-Za-z0-9_-]+)\}/g;
       while ((mBtn = btnRe.exec(rawLine)) !== null) {
         out = wrapUnknownVar('button', mBtn[1], out);
       }
@@ -544,7 +544,7 @@ const RawTab: React.FC<RawTabProps> = ({
       out = out.replace(/\[|\]/g, (m) => `<span style="color:${syntaxColors.bracket}">${m}</span>`);
       out = out.replace(/\{|\}/g, (m) => `<span style="color:${syntaxColors.brace}">${m}</span>`);
       // inline @name with active highlight
-      out = out.replace(/@([A-Za-z0-9_\-]+)/g, (_m, p1) => {
+      out = out.replace(/@([A-Za-z0-9_-]+)/g, (_m, p1) => {
         const isActive = !!activeRef && p1 === activeRef;
         const bg = isActive ? 'rgba(255,255,255,0.12)' : 'transparent';
         // No padding to keep overlay alignment exact
@@ -566,7 +566,7 @@ const RawTab: React.FC<RawTabProps> = ({
       .map((line) => {
         const escaped = escapeHtml(line);
         // Scene header lines like "@name"
-        const sceneHeader = line.match(/^\s*@([A-Za-z0-9_\-]+)\s*$/);
+        const sceneHeader = line.match(/^\s*@([A-Za-z0-9_-]+)\s*$/);
         if (sceneHeader) {
           const name = sceneHeader[1];
           const isActive = !!activeRef && name === activeRef;
@@ -594,7 +594,7 @@ const RawTab: React.FC<RawTabProps> = ({
             const lines = code.split(/\r?\n/);
             const errs: Array<{ line: number; message: string }> = [];
             const rich: Array<any> = [];
-            const sceneStart = /^@([A-Za-z0-9_\-]+)\s*$/;
+            const sceneStart = /^@([A-Za-z0-9_-]+)\s*$/;
             let inStyles = false;
             lines.forEach((line, idx) => {
               if (/^\s*@/.test(line) && !sceneStart.test(line.trim())) {
@@ -650,7 +650,7 @@ const RawTab: React.FC<RawTabProps> = ({
                   });
                 }
                 // Also record unknown style references in this line
-                const styleRef = /\bstyle\s*=\s*([A-Za-z0-9_\-]+)/g;
+                const styleRef = /\bstyle\s*=\s*([A-Za-z0-9_-]+)/g;
                 let m: RegExpExecArray | null;
                 while ((m = styleRef.exec(line)) !== null) {
                   const name = m[1];
