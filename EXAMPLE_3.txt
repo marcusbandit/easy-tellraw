@@ -1,5 +1,5 @@
 @styles
-style.danger color=#f10430 italic=true
+style.danger color=#f10430 bold=true italic=true underline=tru
 style.normal color=#d51515
 style.primary color=#2D6CDF
 style.shop_item color=#AA5140
@@ -7,7 +7,7 @@ style.warning color=#FFC107
 
 character.Elder name_color=#5FCF7F text_color=#A0FF9F
 character.Guard name_color=#8C8C8C text_color=#D0D0D0
-character.Jordan name_color=#4f57dd text_color=#56C0FF text_bold=true
+character.Jordan name_color=#4f57dd text_color=#56C0FF
 character.Kara name_color=#B04A7A text_color=#FF6BAA
 character.Merchant name_color=#BFA040 text_color=#FFD580
 character.Narrator name_color=#888888 text_color=#AAAAAA
@@ -17,12 +17,12 @@ button.yes color=#3ade2c
 button.no color=#ec3456
 @endstyles
 
-@max_width_demo
+@chat_width_demo
 iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 
 @start
 {character.Narrator} {italic}The wind howls through the empty streets...{/}
-{character.Jordan} Kara, we need to decide. [Go to the market -> @market_entry]{style=primary} [Head to the guard tower -> @guard_tower_entry]{style=warning} [Check map -> ui:map/open]{color=#00FFC8}
+{character.Jordan} Kara!, we need to decide. [Go to the market -> @market_entry]{style=primary} [Head to the guard tower -> @guard_tower_entry]{style=warning} [Check map -> ui:map/open]{color=#00FFC8}
 {character.Kara} Or we could just go home. [Go home -> @go_home]{style=danger}
 
 @market_entry
@@ -35,14 +35,14 @@ Stab yourself? [Stab stab -> execute as @s run damage @s sword 10]
 {bold}Potions{/}: [Potion -> shop:potions/buy_health]{style=shop_item}  
 {bold}Weapons{/}: [Sword -> shop:weapons/buy_sword]{style=shop_item}  
 {bold}Armor{/}: [Shield -> shop:armor/buy_shield]{style=shop_item} [Cloak -> shop:armor/buy_cloak]{style=shop_item}  
-{bold}Tools{/}: [Lockpick -> shop:tools/buy_lockpick]{style=shop_item} [Lantern -> shop:tools/buy_lantern]{style=shop_item} [Rope -> shop:tools/buy_rope]{style=shop_item} [Chain -> shop:tools/buy_chain]{style=shop_item} [Map -> shop:tools/buy_map]{style=shop_item}  
+{bold}Tools{/}: [Lockpick -> shop:tools/buy_lockpick]{style=shop_item} [Lantern -> shop:tools/buy_lantern]{style=shop_item} [Rope -> shop:tools/buy_rope]{style=shop_item} [Chain -> shop:tools/buy_chain]{style=shop_item} [Map -> shop:tools/buy_map]{style=shitem}  
 {bold}Food{/}: [Apple -> shop:food/buy_apple]{style=shop_item}
 {bold}Misc{/}: [Mysterious Box -> shop:misc/buy_mystery_box]{style=warning}  
 {character.Kara} Or we could {color=#0FF}steal{/} something. [Steal -> @market_steal]{style=danger}  
 {character.Merchant} Anything else? [Ask about rumors -> @market_rumors] [Ask for discount -> @market_discount] [{button.Back} -> @market_entry]
 
 @market_discount
-{character.Merchant} For you, a special price! [Accept offer -> shop:apply_discount]{style=shop_item} [Haggle more -> @market_haggle]{style=warning} [Decline -> @market_browse]
+{character.Merchant} For you, a special price! [Accept offer -> shop:apply_discount]{style=shop_m} [Haggle more -> @market_haggle]{style=warning} [Decline -> @market_browse]
 
 @market_haggle
 {character.Merchant} Hmm... you drive a hard bargain. [Final offer -> shop:apply_final_discount]{style=shop_item} [No thanks -> @market_browse]

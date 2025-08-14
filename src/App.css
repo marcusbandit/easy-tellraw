@@ -1,7 +1,4 @@
-.App {
-  text-align: center;
-  font-family: minecraftiaregular, sans-serif;
-}
+.App { text-align: center; }
 
 .App-logo {
   height: 40vmin;
@@ -21,7 +18,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
+  font-size: var(--mc-font-size-3);
   color: white;
 }
 
@@ -39,8 +36,8 @@
 }
 
 .preview {
-  font-family: minecraftiaregular, sans-serif;
-  font-size: 1.5rem;
+  font-family: Minecraft, sans-serif;
+  font-size: var(--mc-font-size-3);
   padding: 8px;
   margin: 16px auto;
   background-color: #ffffff;
@@ -58,8 +55,8 @@
 }
 
 .radix-themes {
-  --default-font-family: 'minecraftiaregular' !important;
-  --heading-font-family: 'minecraftiaregular' !important;
+  --default-font-family: 'Minecraft' !important;
+  --heading-font-family: 'Minecraft' !important;
 } 
 
 /* Raw editor custom token */
@@ -71,4 +68,75 @@
 .raw-unknown-style {
   color: var(--red9);
   text-decoration: underline wavy var(--red9);
+}
+
+/* RAW tab: ensure the overlay textarea never constrains height; container handles scrolling */
+[data-raw-tab-root="1"] textarea {
+  max-height: none !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  resize: none !important;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+}
+[data-raw-tab-root="1"] textarea::-webkit-scrollbar { /* Chrome/Safari */
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Global scrollbar styling to match app theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-a8) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--gray-a8);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-a9);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* CodeMirror lint tooltip theming (force overlay tooltips to match app) */
+[data-raw-tab-root="1"] .cm-tooltip {
+  background: #1C1F20 !important;
+  color: #F59E0B !important;
+  border: 1px solid #F59E0B !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+  padding: 8px 8px !important;
+}
+[data-raw-tab-root="1"] .cm-tooltip .cm-diagnostic,
+[data-raw-tab-root="1"] .cm-tooltip .cm-diagnosticText {
+  color: #F59E0B !important;
+}
+[data-raw-tab-root="1"] .cm-tooltip .cm-diagnosticAction {
+  background: rgba(245,158,11,0.10) !important;
+  color: #F59E0B !important;
+  border: 1px solid rgba(245,158,11,0.35) !important;
+  border-radius: 6px !important;
+  padding: 2px 8px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.15px !important;
+  cursor: pointer !important;
+  transition: background 120ms ease, border-color 120ms ease !important;
+}
+[data-raw-tab-root="1"] .cm-tooltip .cm-diagnosticAction:hover {
+  background: rgba(245,158,11,0.16) !important;
+  border-color: rgba(245,158,11,0.55) !important;
+}
+[data-raw-tab-root="1"] .cm-tooltip .cm-tooltip-arrow:before,
+[data-raw-tab-root="1"] .cm-tooltip .cm-tooltip-arrow:after {
+  border-top-color: #F59E0B !important;
 }

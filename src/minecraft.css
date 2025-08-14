@@ -1,12 +1,58 @@
 @font-face {
-  font-family: "minecraftiaregular";
-  src: url("./fonts/minecraftia/minecraftia-webfont.woff") format("woff");
+  font-family: "Minecraft";
+  src: url("./fonts/minecraft/MinecraftRegular-Bmg3.otf") format("opentype");
   font-style: normal;
-  font-weight: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Minecraft";
+  src: url("./fonts/minecraft/MinecraftItalic-R8Mo.otf") format("opentype");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Minecraft";
+  src: url("./fonts/minecraft/MinecraftBold-nMK1.otf") format("opentype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Minecraft";
+  src: url("./fonts/minecraft/MinecraftBoldItalic-1y1e.otf") format("opentype");
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  /* Minecraft text 4-step scale */
+  --mc-font-size-1: 16px; /* small */
+  --mc-font-size-2: 18px; /* base */
+  --mc-font-size-3: 22px; /* large */
+  --mc-font-size-4: 26px; /* xlarge */
+
+  /* Raw editor monospace 4-step scale */
+  --raw-font-size-1: 12px;
+  --raw-font-size-2: 14px; /* current default */
+  --raw-font-size-3: 16px;
+  --raw-font-size-4: 18px;
+
+  /* UI category sizes */
+  --mc-button-font-size: var(--mc-font-size-2);
+  --mc-tab-font-size: var(--mc-font-size-2);
+  --mc-label-font-size: var(--mc-font-size-2);
+  --mc-preview-font-size: var(--mc-font-size-3);
 }
 
 body {
-  font-family: "minecraftiaregular", sans-serif;
+  font-family: "Minecraft", sans-serif;
+  font-size: var(--mc-font-size-3);
   text-align: center;
   background-color: #121212;
   color: #e0e0e0;
@@ -14,8 +60,8 @@ body {
 
 /* Override Radix Themes default font to Minecraft */
 .radix-themes {
-  --default-font-family: 'minecraftiaregular';
-  --heading-font-family: 'minecraftiaregular';
+  --default-font-family: 'Minecraft';
+  --heading-font-family: 'Minecraft';
 }
 
 /* Disable font smoothing for headings to preserve pixelated font crispness */
@@ -28,5 +74,10 @@ body {
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeSpeed;
-  font-weight: normal !important;
 } 
+
+/* Global UI sizing for menus, buttons, labels, tabs */
+.radix-themes button { font-size: var(--mc-button-font-size); }
+.radix-themes .rt-Button { font-size: var(--mc-button-font-size); }
+.radix-themes .rt-TabsTrigger { font-size: var(--mc-tab-font-size); }
+.radix-themes .rt-Text, .radix-themes label { font-size: var(--mc-label-font-size); }

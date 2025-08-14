@@ -164,13 +164,13 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
     <div style={{ marginTop: 8, maxWidth: '100%' }}>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
         {/* Target selector */}
-        <SegmentedControl.Root value={selectedTarget} onValueChange={handleTargetChange} style={{ width: '120px' }}>
+        <SegmentedControl.Root value={selectedTarget} onValueChange={handleTargetChange} style={{ width: '120px', fontSize: 'var(--mc-label-font-size)' }}>
           <SegmentedControl.Item value="@p">@p</SegmentedControl.Item>
           <SegmentedControl.Item value="@s">@s</SegmentedControl.Item>
           <SegmentedControl.Item value="@a">@a</SegmentedControl.Item>
         </SegmentedControl.Root>
         {/* Copy and Collapse/Expand buttons */}
-        <Button size="2" variant="surface" onClick={handleToggle} style={{ display: 'flex', alignItems: 'center' }}>
+        <Button size="2" variant="surface" onClick={handleToggle} style={{ display: 'flex', alignItems: 'center', fontSize: 'var(--mc-button-font-size)' }}>
           {collapsed ? (
             <><ChevronRightIcon height={16} width={16} style={{ marginRight: '8px' }} />Expand</>
           ) : (
@@ -182,7 +182,8 @@ const JsonOutput: React.FC<JsonOutputProps> = ({ jsonString, segments, activeSeg
         style={{
           width: '100%', boxSizing: 'border-box', height: 200, overflow: 'auto',
           backgroundColor: '#1e1e1e', border: '1px solid #333',
-          padding: '8px', borderRadius: '8px', fontFamily: 'minecraftiaregular, sans-serif',
+          padding: '8px', borderRadius: '8px', fontFamily: 'Minecraft, sans-serif',
+          fontSize: 'var(--mc-font-size-3)',
           margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', textAlign: 'left'
         }}
       >

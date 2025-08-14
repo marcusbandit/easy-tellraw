@@ -33,22 +33,22 @@ const PresetButtonsPanel: React.FC<PresetButtonsPanelProps> = ({ onUseCommand, t
   return (
     <Card size="2" variant="surface">
       <Flex direction="column" gap="3">
-        <Heading size="5">Presets</Heading>
+        <Heading size="5" style={{ fontSize: 'var(--mc-preview-font-size)' }}>Presets</Heading>
         {byCategory.map(([cat, items], idx) => (
           <React.Fragment key={cat}>
             {idx > 0 && <Separator size="4" my="1" />}
-            <Heading size="3">{cat}</Heading>
+            <Heading size="3" style={{ fontSize: 'var(--mc-label-font-size)' }}>{cat}</Heading>
             <Flex direction="column" gap="2">
               {items.map(p => (
                 <Button
                   key={p.id}
                   variant="surface"
                   onClick={() => onUseCommand(buildCommandFromPreset(p, target))}
-                  style={{ justifyContent: 'flex-start' }}
+                  style={{ justifyContent: 'flex-start', fontSize: 'var(--mc-button-font-size)' }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <Text weight="bold">{p.name}</Text>
-                    <Text size="1" color="gray">{p.description}</Text>
+                    <Text weight="bold" style={{ fontSize: 'var(--mc-label-font-size)' }}>{p.name}</Text>
+                    <Text size="1" color="gray" style={{ fontSize: 'calc(var(--mc-label-font-size) - 2px)' }}>{p.description}</Text>
                   </div>
                 </Button>
               ))}

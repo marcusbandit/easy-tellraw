@@ -21,7 +21,7 @@ const Sidebar: React.FC<SidebarProps> = ({ segments, segmentPaths, activeSegment
   return (
     <div style={{ width: '240px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <Card size="2" variant="surface">
-        <Heading size="4" mb="2">Text Settings</Heading>
+        <Heading size="4" mb="2" style={{ fontSize: 'var(--mc-label-font-size)' }}>Text Settings</Heading>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <ToggleButton format="bold" active={activeSeg.bold} path={activePath}><strong>Bold</strong></ToggleButton>
           <ToggleButton format="italic" active={activeSeg.italic} path={activePath}><em>Italic</em></ToggleButton>

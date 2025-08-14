@@ -16,7 +16,7 @@ export const Leaf = ({ attributes, children, leaf }: any) => {
     if (leaf.strikethrough) el = <s>{el}</s>;
     if (leaf.underline) el = <u>{el}</u>;
   }
-  const leafStyle: React.CSSProperties = { lineHeight: 1.15 };
+  const leafStyle: React.CSSProperties = { lineHeight: 1 };
   if (leaf.color) leafStyle.color = leaf.color;
   // Apply decoration-based highlighting or click-event highlight
   if (leaf.highlight) {

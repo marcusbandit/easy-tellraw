@@ -197,10 +197,10 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
   return (
     <Card size="2" variant="surface">
       <Flex direction="column" gap="3">
-        <Heading size="5">Presets</Heading>
+        <Heading size="5" style={{ fontSize: 'var(--mc-preview-font-size)' }}>Presets</Heading>
         {/* Named Styles (style.<name>) */}
         <Card size="2" variant="classic">
-          <Heading size="3" mb="2">Styles</Heading>
+          <Heading size="3" mb="2" style={{ fontSize: 'var(--mc-label-font-size)' }}>Styles</Heading>
           <Flex direction="column" gap="2">
             {Object.entries(namedStyles).map(([key, st]) => {
               const color = (st as any)?.color || '#ffffff';
@@ -258,7 +258,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
         </Card>
         {/* Characters (two sections: Name style and Text style), mirrors button editor patterns */}
         <Card size="2" variant="classic">
-          <Heading size="3" mb="2">Characters</Heading>
+          <Heading size="3" mb="2" style={{ fontSize: 'var(--mc-label-font-size)' }}>Characters</Heading>
           <Flex direction="column" gap="3">
             {Object.keys(speakerStyles).length === 0 && (
               <Text size="2" style={{ color: 'var(--gray-a10)' }}>No characters detected yet. Import a dialogue file to populate.</Text>
@@ -301,7 +301,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                     <Flex align="center" gap="3" wrap="wrap">
                       <Text size="2" style={{ minWidth: 90 }}>Name</Text>
                       <div style={{ position: 'relative', width: 288, height: 32, display: 'inline-block' }}>
-                        <span aria-hidden style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'center', padding: '8px 8px', color: nameColor, fontWeight: nameStyle?.bold ? 700 : 500, fontStyle: nameStyle?.italic ? 'italic' : 'normal', textDecoration: nameStyle?.underline ? 'underline' : nameStyle?.strikethrough ? 'line-through' : 'none', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 14, fontFamily: 'inherit', lineHeight: '24px', zIndex: 1 }}>{chName}</span>
+                        <span aria-hidden style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'center', padding: '8px 8px', color: nameColor, fontWeight: nameStyle?.bold ? 700 : 500, fontStyle: nameStyle?.italic ? 'italic' : 'normal', textDecoration: nameStyle?.underline ? 'underline' : nameStyle?.strikethrough ? 'line-through' : 'none', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 'var(--mc-font-size-2)', fontFamily: 'inherit', lineHeight: '24px', zIndex: 1 }}>{chName}</span>
                         <input
                           value={chName}
                           onChange={e => {
@@ -312,7 +312,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                             next[newName] = existing;
                             persistStyles(buttonStyles, next);
                           }}
-                          style={{ width: '100%', height: '100%', position: 'relative', zIndex: 2, background: 'transparent', border: '1px solid var(--gray-a6)', borderRadius: 8, boxSizing: 'border-box', padding: '8px 8px', color: 'transparent', caretColor: nameColor, outline: 'none', fontSize: 14, fontFamily: 'inherit', fontWeight: nameStyle?.bold ? 700 : 500, fontStyle: nameStyle?.italic ? 'italic' : 'normal', textDecoration: nameStyle?.underline ? 'underline' : nameStyle?.strikethrough ? 'line-through' : 'none', lineHeight: '24px' }}
+                          style={{ width: '100%', height: '100%', position: 'relative', zIndex: 2, background: 'transparent', border: '1px solid var(--gray-a6)', borderRadius: 8, boxSizing: 'border-box', padding: '8px 8px', color: 'transparent', caretColor: nameColor, outline: 'none', fontSize: 'var(--mc-font-size-2)', fontFamily: 'inherit', fontWeight: nameStyle?.bold ? 700 : 500, fontStyle: nameStyle?.italic ? 'italic' : 'normal', textDecoration: nameStyle?.underline ? 'underline' : nameStyle?.strikethrough ? 'line-through' : 'none', lineHeight: '24px' }}
                         />
                       </div>
                       <Popover.Root>
@@ -394,7 +394,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
 
         {/* Button presets (single button visuals) */}
         <Card size="2" variant="classic">
-          <Heading size="3" mb="2">Button presets</Heading>
+          <Heading size="3" mb="2" style={{ fontSize: 'var(--mc-label-font-size)' }}>Button presets</Heading>
           <Flex direction="column" gap="3">
             {/* List of buttons */}
             <Flex gap="2" wrap="wrap">
@@ -475,7 +475,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          fontSize: 14,
+                          fontSize: 'var(--mc-font-size-2)',
                           fontFamily: 'inherit',
                           lineHeight: '24px',
                           zIndex: 1
@@ -503,7 +503,7 @@ const PresetsPanel: React.FC<PresetsPanelProps> = ({ onUseCommand, graph, onUpda
                           color: 'transparent',
                           caretColor: draftValid ? draft : currentColor,
                           outline: 'none',
-                          fontSize: 14,
+                          fontSize: 'var(--mc-font-size-2)',
                           fontFamily: 'inherit',
                           fontWeight: labelEmpty ? 500 : (style?.bold ? 700 : 500),
                           fontStyle: labelEmpty ? 'normal' : (style?.italic ? 'italic' : 'normal'),

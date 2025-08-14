@@ -6,8 +6,9 @@ export const syntaxColors = {
   punctuation: '#759FB8',
   brace: '#DA6DAC',
   bracket: '#F1D702',
-  property: '#ffffff',
-  attribute: '#ffffff',
+  // Property/assignment key color (used for bold=, italic=, color=, etc.)
+  property: '#FFB86C',
+  attribute: '#FFB86C',
   keyword: '#759FB8',
   selector: '#55ffff',
   comment: '#555555',

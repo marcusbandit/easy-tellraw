@@ -271,7 +271,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
                 const paste = event.clipboardData.getData('text/plain');
                 Transforms.insertText(editor, paste);
               }}
-              style={{ outline: 'none', lineHeight: 1.15 }}
+              style={{ outline: 'none', lineHeight: 1, fontSize: 'var(--mc-font-size-3)' }}
             />
           </Box>
           <JsonOutput
@@ -286,12 +286,12 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
           />
           <Flex justify="between" align="center" gap="2" mt="4">
             <div>
-              <Button variant="outline" color="red" size="2" onClick={onReset}>Reset Tellraw</Button>
+              <Button variant="outline" color="red" size="2" onClick={onReset} style={{ fontSize: 'var(--mc-button-font-size)' }}>Reset Tellraw</Button>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Dialog.Root>
               <Dialog.Trigger>
-                <Button variant="surface" size="2">Import Tellraw Command</Button>
+                <Button variant="surface" size="2" style={{ fontSize: 'var(--mc-button-font-size)' }}>Import Tellraw Command</Button>
               </Dialog.Trigger>
               <Dialog.Content width="80vw" maxWidth="none">
                 <Dialog.Title>Import Tellraw Command</Dialog.Title>
@@ -326,7 +326,8 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
                   }}
                   padding={8}
                   style={{
-                    fontFamily: 'minecraftiaregular, sans-serif',
+                    fontFamily: 'Minecraft, sans-serif',
+                    fontSize: 'var(--mc-font-size-3)',
                     backgroundColor: 'var(--gray-a2)',
                     color: 'white',
                     border: '1px solid var(--gray-a6)',
@@ -342,17 +343,17 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
                 )}
                 <Flex justify="end" gap="2" mt="3">
                   <Dialog.Close>
-                    <Button variant="outline" size="2">Cancel</Button>
+                    <Button variant="outline" size="2" style={{ fontSize: 'var(--mc-button-font-size)' }}>Cancel</Button>
                   </Dialog.Close>
                   <Dialog.Close>
-                    <Button size="2" onClick={() => onImport(importInput)} disabled={!!importError}>
+                    <Button size="2" onClick={() => onImport(importInput)} disabled={!!importError} style={{ fontSize: 'var(--mc-button-font-size)' }}>
                       Load
                     </Button>
                   </Dialog.Close>
                 </Flex>
               </Dialog.Content>
             </Dialog.Root>
-              <Button variant="solid" size="2" onClick={onCopy}>Copy Tellraw Command</Button>
+              <Button variant="solid" size="2" onClick={onCopy} style={{ fontSize: 'var(--mc-button-font-size)' }}>Copy Tellraw Command</Button>
             </div>
           </Flex>
         </Box>

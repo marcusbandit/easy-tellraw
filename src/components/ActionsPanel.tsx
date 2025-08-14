@@ -116,8 +116,8 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
 
   return (
     <Card size="2" variant="surface">
-      <Heading size="5" mb="2">Actions</Heading>
-      <Heading size="2" mb="1" mt="2">Click</Heading>
+      <Heading size="5" mb="2" style={{ fontSize: 'var(--mc-preview-font-size)' }}>Actions</Heading>
+      <Heading size="2" mb="1" mt="2" style={{ fontSize: 'var(--mc-label-font-size)' }}>Click</Heading>
       <SegmentedControl.Root value={clickAction} onValueChange={(v) => { userActionRef.current = true; setClickAction(v); }} style={{ width: '100%', marginTop: '8px' }}>
         <SegmentedControl.Item value="run_command">Run command</SegmentedControl.Item>
         <SegmentedControl.Item value="suggest_command">Suggest command</SegmentedControl.Item>
@@ -198,7 +198,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
           <ActionIcon height={16} width={16} />
         </TextField.Slot>
       </TextField.Root>
-      <Heading size="2" mb="1" mt="2">Hover</Heading>
+      <Heading size="2" mb="1" mt="2" style={{ fontSize: 'var(--mc-label-font-size)' }}>Hover</Heading>
       <TextField.Root
         value={hoverText}
         onChange={e => {

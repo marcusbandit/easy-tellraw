@@ -49,17 +49,17 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
       {/* Center-left target handle ("in" anchor) */}
       {/* Target handle aligned as originally (relative to node edge) */}
       <Handle type="target" position={Position.Left} id="in" style={{ left: -8, background: '#666', width: 8, height: 8, top: '50%', transform: 'translateY(-50%)' }} />
-      <div style={{ maxWidth: 480, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>{data.label}</div>
+      <div style={{ maxWidth: 512, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+        <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 'var(--mc-font-size-2)' }}>{data.label}</div>
         <div>
           {data.lines.map((l, i) => {
             const containerStyle: CSSProperties = {
-              fontSize: 12,
+              fontSize: 'var(--mc-font-size-1)',
               textAlign: 'left',
               overflowWrap: 'anywhere',
               wordBreak: 'break-word',
               whiteSpace: 'normal',
-              lineHeight: 1.15,
+              lineHeight: 1,
             };
             const nameStyle: CSSProperties | undefined = l.namePrefix ? {
               color: l.nameColor || '#c8c8c8',
@@ -154,7 +154,7 @@ const GhostNode: React.FC<{ data: { label: string; isHovered?: boolean; debugHei
       backgroundColor: data.isHovered ? 'rgba(60,60,60,0.7)' : 'rgba(45,45,45,0.6)',
       border: data.isHovered ? '1px dashed #aaa' : '1px dashed #555',
       color: '#e0e0e0',
-      fontSize: 12,
+      fontSize: 'var(--mc-font-size-1)',
       boxShadow: data.isHovered ? '0 0 0 2px rgba(255,255,255,0.1)' : 'none',
       transition: 'border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease',
       position: 'relative',

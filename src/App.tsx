@@ -17,7 +17,7 @@ import { Transforms } from "slate";
 import { flattenSlateFragmentToCharSegments, squashAdjacentSegments } from "./lib/segments";
 import { DialogueGraph } from "./types/dialogue";
 import { parseDialogue } from "./lib/dialogueParser";
-import RawTab from "./components/tabs/RawTab";
+import RawTab from "./components/tabs/RawTabCM";
 
 const App: React.FC = () => {
   // State for Slate content and remount key
@@ -510,18 +510,20 @@ const App: React.FC = () => {
     };
   }, [dialogueSource]);
 
+  const contentOverflow = activeTab === 'raw' ? 'hidden' : 'auto';
+
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {/* Main content area */}
-      <div style={{ flex: '1 1 auto', minWidth: 0, background: 'var(--gray-a2)', display: 'flex', flexDirection: 'column', padding: '16px', overflow: 'auto' }}>
-        <Tabs.Root value={activeTab} onValueChange={handleTabChange} style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: '1 1 auto', minWidth: 0, minHeight: 0, background: 'var(--gray-a2)', display: 'flex', flexDirection: 'column', padding: '16px', overflow: contentOverflow }}>
+        <Tabs.Root value={activeTab} onValueChange={handleTabChange} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {/* Fixed header: tabs + toolbar, full-bleed to window edges */}
           <div ref={stickyHeaderRef} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, background: '#18191B', paddingTop: 16, paddingBottom: 8, paddingLeft: 16, paddingRight: 16 }}>
             <Tabs.List style={{ background: '#18191B' }}>
-              <Tabs.Trigger value="presets">Presets</Tabs.Trigger>
-              <Tabs.Trigger value="editor">Editor</Tabs.Trigger>
-              <Tabs.Trigger value="graph">Graph</Tabs.Trigger>
-              <Tabs.Trigger value="raw">Raw</Tabs.Trigger>
+              <Tabs.Trigger value="presets" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Presets</Tabs.Trigger>
+              <Tabs.Trigger value="editor" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Editor</Tabs.Trigger>
+              <Tabs.Trigger value="graph" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Graph</Tabs.Trigger>
+              <Tabs.Trigger value="raw" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Raw</Tabs.Trigger>
             </Tabs.List>
             {/* Global toolbar: Dialogue import below tab picker (lighter background) */}
             <div
@@ -622,7 +624,7 @@ const App: React.FC = () => {
           {/* Spacer to offset the fixed header height so content doesn't hide behind it */}
           <div aria-hidden style={{ height: headerHeight }} />
           
-          <Box pt="3" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <Box pt="3" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {activeTab === 'presets' && (
               <Tabs.Content value="presets" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <PresetsPanel
@@ -767,7 +769,7 @@ const App: React.FC = () => {
             )}
 
             {activeTab === 'raw' && (
-              <Tabs.Content value="raw" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <Tabs.Content value="raw" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', minHeight: 0, maxHeight: '100%', overflow: 'hidden' }}>
                 <RawTab
                   dialogueSource={dialogueSource}
                   onChange={(code) => {
@@ -776,14 +778,6 @@ const App: React.FC = () => {
                   }}
                   rawLintErrors={rawLintErrors}
                   setRawLintErrors={setRawLintErrors}
-                  onApplyToGraph={() => {
-                    try {
-                      const graph = parseDialogue(dialogueSource);
-                      setDialogueGraph(graph);
-                    } catch (err: any) {
-                      alert('Failed to parse dialogue: ' + (err?.message || String(err)));
-                    }
-                  }}
                 />
               </Tabs.Content>
             )}

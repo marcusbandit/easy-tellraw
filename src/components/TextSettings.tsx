@@ -33,7 +33,7 @@ export const ToggleButton = ({ format, children, active, path }: { format: strin
           );
         }
       }}
-      style={{ width: '100%', textAlign: 'center' }}
+      style={{ width: '100%', textAlign: 'center', fontSize: 'var(--mc-button-font-size)' }}
     >
       {children}
     </Button>
