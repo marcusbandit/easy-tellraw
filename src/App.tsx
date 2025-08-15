@@ -451,7 +451,6 @@ const App: React.FC = () => {
       setDatapackDirInput(selected);
       setImportWarning(null);
       setImportInfo(null);
-      try { window.localStorage.clear(); } catch {}
       handleReset();
       await handleLoadFromDatapackDir(selected);
     }

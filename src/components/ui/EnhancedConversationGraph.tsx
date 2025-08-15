@@ -232,8 +232,30 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
   // Small delay before starting simulation after entering graph view
   const [isSimDelayElapsed, setIsSimDelayElapsed] = useState<boolean>(false);
   useEffect(() => {
-    const timer = setTimeout(() => setIsSimDelayElapsed(true), 50);
+    const timer = setTimeout(() => setIsSimDelayElapsed(true), 100); // Increased delay for better stability
     return () => clearTimeout(timer);
+  }, []);
+  
+  // Suppress ResizeObserver errors
+  useEffect(() => {
+    const originalError = console.error;
+    const handleError = (...args: any[]) => {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('ResizeObserver loop completed with undelivered notifications')) {
+        if (!resizeObserverErrorRef.current) {
+          resizeObserverErrorRef.current = true;
+          // Only log once per session to avoid spam
+          console.warn('ResizeObserver loop completed - this is normal during graph animations');
+        }
+        return; // Suppress the error
+      }
+      originalError.apply(console, args);
+    };
+    
+    console.error = handleError;
+    
+    return () => {
+      console.error = originalError;
+    };
   }, []);
 
   const loadLayoutCache = useCallback((): { positions?: Record<string, { x: number; y: number }>; viewport?: { x: number; y: number; zoom: number }; targets?: Record<string, { x: number; y: number }> } | null => {
@@ -265,6 +287,20 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [saveLayoutCache]);
+  
+  // Cleanup on unmount to prevent memory leaks and ResizeObserver issues
+  useEffect(() => {
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+      // Clear any pending timeouts
+      if (resizeObserverErrorRef.current) {
+        resizeObserverErrorRef.current = false;
+      }
+    };
+  }, []);
   // Cached maps for performance
   const parentToChildrenRef = useRef<Record<string, string[]>>({});
   const ownHeightMapRef = useRef<Record<string, number>>({});
@@ -277,8 +313,11 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
   const [debugVersion, setDebugVersion] = useState(0);
   // Physics parameters (tunable)
   // Link distance is now computed dynamically per parent; keep only smoothing
-  const [smoothingAlpha] = useState(0.1);
+  const [smoothingAlpha] = useState(0.05); // Reduced from 0.1 for smoother, less aggressive updates
   const [simTick, setSimTick] = useState(0);
+  
+  // ResizeObserver error suppression
+  const resizeObserverErrorRef = useRef<boolean>(false);
 
   // Idle-compute totals when dirty (hoisted so effects can depend on it)
   const scheduleTotalsCompute = useCallback(() => {
@@ -1513,13 +1552,19 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       // Stop animating when stable for a period; restart on any interaction/param change
       const isIdle = frameMaxDelta < 0.05 && !totalsDirtyRef.current && draggedIdsRef.current.size === 0;
       if (isIdle) idleFramesRef.current += 1; else idleFramesRef.current = 0;
-      if (idleFramesRef.current > 30) {
+      if (idleFramesRef.current > 20) { // Reduced from 30 for faster settling
         // Persist layout once when we settle, avoiding frequent writes during interaction
         try { saveLayoutCache(); } catch (_e) { /* ignore */ }
         animFrameRef.current = null;
         return;
       }
-      animFrameRef.current = requestAnimationFrame(step);
+      
+      // Add small delay between frames to reduce ResizeObserver pressure
+      setTimeout(() => {
+        if (animFrameRef.current) { // Check if still valid
+          animFrameRef.current = requestAnimationFrame(step);
+        }
+      }, 16); // ~60fps instead of continuous
     };
 
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -1620,11 +1665,23 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
   }, [focusScene]);
 
   const displayNodes = useMemo(() => {
-    if (!graphNodes) return [] as any[];
+    if (!graphNodes || !Array.isArray(graphNodes)) return [] as any[];
+    
+    // Filter out any malformed nodes that could cause ReactFlow errors
+    const validNodes = (graphNodes as any[]).filter(n => 
+      n && 
+      n.id && 
+      n.data && 
+      typeof n.id === 'string' &&
+      n.position &&
+      typeof n.position.x === 'number' &&
+      typeof n.position.y === 'number'
+    );
+    
     const prevHovered = prevHoveredSceneIdRef.current;
     if (!SHOW_NODE_DEBUG) {
       // Fast path: only update nodes whose hover state changed
-      return (graphNodes as any[]).map(n => {
+      return validNodes.map(n => {
         const logicalSceneId = (n as any).data?.id as string | undefined;
         const nowHovered = !!logicalSceneId && hoveredSceneId === logicalSceneId;
         const wasHovered = !!logicalSceneId && prevHovered === logicalSceneId;
@@ -1639,7 +1696,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     }
     // Debug path: compute overlays only when debugging is enabled
     const dimsLocal: Record<string, { w: number; h: number; type?: string }> = {};
-    (graphNodes as any[]).forEach((n: any) => {
+    validNodes.forEach((n: any) => {
       const fallbackW = n.type === 'ghost' ? 140 : 520;
       const fallbackH = n.type === 'ghost' ? 40 : 160;
       const w = (n as any).width ?? fallbackW;
@@ -1648,6 +1705,9 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     });
     const mapping = parentToChildrenRef.current;
     const computeChainWidthDisplay = (startId: string): number => {
+      // Safety check for startId
+      if (!startId || !dimsLocal[startId]) return 0;
+      
       // Use cached total width if available for consistency with layout math
       const cached = totalWidthMapRef.current[startId];
       if (typeof cached === 'number') return cached;
@@ -1670,7 +1730,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       return width;
     };
 
-    return (graphNodes as any[]).map(n => {
+    return validNodes.map(n => {
       const logicalSceneId = (n as any).data?.id as string | undefined;
       const isHovered = !!logicalSceneId && hoveredSceneId === logicalSceneId;
       const dimsH = (n as any).height ?? (n.type === 'ghost' ? 40 : 160);
@@ -1688,7 +1748,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     });
   }, [graphNodes, hoveredSceneId, selectedSceneId]);
 
-  if (!graph || graphNodes.length === 0) {
+  if (!graph || !graphNodes || graphNodes.length === 0) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <Card size="3" variant="surface" style={{ maxWidth: 600, textAlign: 'center' }}>
@@ -1705,21 +1765,27 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       {/* Controls removed (no sliders). Smoothing and link distance are managed in code. */}
       <ReactFlowProvider>
         <ReactFlow
-          nodes={displayNodes as any}
-          edges={edges}
+          nodes={displayNodes.length > 0 ? displayNodes as any : []}
+          edges={edges.filter(e => e && e.id && e.source && e.target)}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDragStart={handleNodeDragStart}
           onNodeDrag={handleNodeDrag}
           onNodeDragStop={handleNodeDragStop}
           onNodeClick={handleNodeClick}
-          onNodeMouseEnter={(_e, node) => setHoveredSceneId((node as any).data?.id ?? null)}
+          onNodeMouseEnter={(_e, node) => {
+            if (node && node.data) {
+              setHoveredSceneId((node as any).data?.id ?? null);
+            }
+          }}
           onNodeMouseLeave={(_e, node) => {
-            const sceneId = (node as any).data?.id ?? null;
-            setHoveredSceneId(prev => (prev === sceneId ? null : prev));
+            if (node && node.data) {
+              const sceneId = (node as any).data?.id ?? null;
+              setHoveredSceneId(prev => (prev === sceneId ? null : prev));
+            }
           }}
           nodeTypes={nodeTypes}
-            minZoom={0.1}
+          minZoom={0.1}
           nodesDraggable
           style={{ backgroundColor: '#1e1e1e' }}
           onMove={(_evt, viewport) => {
@@ -1730,6 +1796,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
           defaultViewport={hasCachedLayout && initialViewport ? initialViewport : undefined}
           proOptions={{ hideAttribution: true }}
           onlyRenderVisibleElements
+          // Performance optimizations to reduce ResizeObserver pressure
+          selectNodesOnDrag={false}
           onInit={(instance) => {
             flowInstanceRef.current = instance as ReactFlowInstance;
             // hydrate any last targets into overlay if debug shows
