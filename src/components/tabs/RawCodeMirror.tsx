@@ -12,6 +12,8 @@ export interface RawCodeMirrorProps {
 	value: string;
 	onChange: (next: string) => void;
 	onDiagnostics?: (diags: Array<{ line: number; message: string }>) => void;
+	readOnly?: boolean;
+	stylesContent?: string; // Optional styles content for reference validation
 }
 
 const allowedInlineKeys = new Set<string>([
@@ -84,9 +86,12 @@ function suggestClosest(word: string, candidates: string[], max = 2): string | n
     return bestDist <= max ? best : null;
 }
 
-function computeDiagnostics(doc: string): Diagnostic[] {
+function computeDiagnostics(doc: string, stylesContent?: string): Diagnostic[] {
 	const diags: Diagnostic[] = [];
-	const { knownStyles, knownChars, knownButtons } = computeKnowns(doc);
+	
+	// Combine main document with styles content for reference checking
+	const combinedForRefs = stylesContent ? `${stylesContent}\n\n${doc}` : doc;
+	const { knownStyles, knownChars, knownButtons } = computeKnowns(combinedForRefs);
 	const lines = doc.split(/\r?\n/);
 	let inStyles = false;
 	let offsetBase = 0;
@@ -261,6 +266,10 @@ const cmTheme = EditorView.theme({
 		fontFamily: '\'JetBrainsMono Nerd Font\', \'JetBrains Mono\', \'Fira Code\', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \'Liberation Mono\', \'Courier New\', monospace',
 		fontSize: 'var(--raw-font-size-2)',
 		height: '100%'
+	},
+	'.cm-editor.cm-readonly': {
+		backgroundColor: 'var(--gray-a1)',
+		opacity: '0.9'
 	},
 	'.cm-content': { caretColor: 'var(--gray-a12)' },
 	'.cm-gutters': { backgroundColor: 'transparent', borderRight: '1px solid var(--gray-a6)' },
@@ -524,14 +533,14 @@ const highlightField = StateField.define<DecorationSet>({
     provide: f => EditorView.decorations.from(f)
 });
 
-const RawCodeMirror: React.FC<RawCodeMirrorProps> = ({ value, onChange, onDiagnostics }) => {
+const RawCodeMirror: React.FC<RawCodeMirrorProps> = ({ value, onChange, onDiagnostics, readOnly = false, stylesContent }) => {
 	const hostRef = React.useRef<HTMLDivElement | null>(null);
 	const viewRef = React.useRef<EditorView | null>(null);
 
-	// Debounced diagnostics callback to provide rawLintErrors line+message array
+			// Debounced diagnostics callback to provide rawLintErrors line+message array
 	const reportDiagnostics = React.useCallback((doc: string) => {
 		if (!onDiagnostics) return;
-		const diags = computeDiagnostics(doc);
+		const diags = computeDiagnostics(doc, stylesContent);
 		const lines = doc.split(/\r?\n/);
 		const result: Array<{ line: number; message: string }> = [];
 		for (const d of diags) {
@@ -546,7 +555,7 @@ const RawCodeMirror: React.FC<RawCodeMirrorProps> = ({ value, onChange, onDiagno
 			result.push({ line, message: d.message });
 		}
 		onDiagnostics(result);
-	}, [onDiagnostics]);
+	}, [onDiagnostics, stylesContent]);
 
 	React.useEffect(() => {
 		if (!hostRef.current) return;
@@ -561,11 +570,12 @@ const RawCodeMirror: React.FC<RawCodeMirrorProps> = ({ value, onChange, onDiagno
 				cmTheme,
 				highlightActiveLine(),
 				highlightActiveLineGutter(),
-				EditorView.lineWrapping,
+						EditorView.lineWrapping,
 				highlightField,
-				linter(() => computeDiagnostics(viewRef.current?.state.doc.toString() || '')),
+				readOnly ? EditorView.editable.of(false) : [],
+				linter(() => computeDiagnostics(viewRef.current?.state.doc.toString() || '', stylesContent)),
 				EditorView.updateListener.of((v) => {
-					if (v.docChanged) {
+					if (v.docChanged && !readOnly) {
 						const next = v.state.doc.toString();
 						onChange(next);
 						reportDiagnostics(next);
@@ -595,6 +605,11 @@ const RawCodeMirror: React.FC<RawCodeMirrorProps> = ({ value, onChange, onDiagno
 		});
 		const view = new EditorView({ state: startState, parent: hostRef.current });
 		viewRef.current = view;
+		
+		// Add read-only class if needed
+		if (readOnly) {
+			view.dom.classList.add('cm-readonly');
+		}
 		// Initial diagnostics report
 		reportDiagnostics(value);
 		return () => { view.destroy(); viewRef.current = null; };

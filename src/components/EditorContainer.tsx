@@ -7,7 +7,6 @@ import { Leaf } from './TextEditor';
 import Editor from 'react-simple-code-editor';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-json';
-import { parseDialogue } from '../lib/dialogueParser';
 import { DialogueGraph } from '../types/dialogue';
 
 interface EditorContainerProps {
@@ -46,13 +45,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
   const editor = useSlate();
   const [importInput, setImportInput] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
-  const dialogueFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [watchedFilePath, setWatchedFilePath] = useState<string | null>(null);
-
-  // Electron ipcRenderer (available in Electron with nodeIntegration)
-  const ipcRenderer: any = (typeof window !== 'undefined' && (window as any).require)
-    ? (window as any).require('electron').ipcRenderer
-    : null;
+  // Removed file open/watch responsibilities (handled in App)
 
   // Decorate text nodes overlapping the selection range
   const decorate = useCallback(([node, path]: any) => {
@@ -98,51 +91,7 @@ const EditorContainer: React.FC<EditorContainerProps> = ({
     }
   }, [importInput]);
 
-  // Helper: Load dialogue from a filesystem path, cache path, and start watching
-  const loadDialogueFromPath = useCallback(async (filePath: string, persist: boolean, autoSwitch: boolean) => {
-    if (!ipcRenderer) return;
-    try {
-      const text: string = await ipcRenderer.invoke('read-file', filePath);
-      const graph = parseDialogue(text);
-      onImportDialogue(graph, { autoSwitch });
-      try { onDialogueSourceChange?.(text); } catch {}
-      if (persist) {
-        try { window.localStorage.setItem('lastDialogueFilePath', filePath); } catch {}
-      }
-      // Start watching (this also clears any previous watcher in main)
-      ipcRenderer.send('watch-file', filePath);
-      setWatchedFilePath(filePath);
-    } catch (err: any) {
-      alert('Failed to open dialogue file: ' + (err?.message || String(err)));
-    }
-  }, [ipcRenderer, onImportDialogue, onDialogueSourceChange]);
-
-  // On mount: if we have a cached dialogue path, load it and start watching
-  useEffect(() => {
-    if (!ipcRenderer) return;
-    const lastPath = window.localStorage.getItem('lastDialogueFilePath');
-    if (lastPath) {
-      loadDialogueFromPath(lastPath, false, false);
-    }
-    // Listen for change events from main to hot-reload
-    const onChanged = (_event: any, payload: { path: string; eventType: string }) => {
-      if (payload?.path && payload.path === watchedFilePath) {
-        loadDialogueFromPath(payload.path, false, false);
-      }
-    };
-    const onError = (_event: any, payload: { path: string; message: string }) => {
-      console.warn('File watch error:', payload);
-    };
-    ipcRenderer.on('file-changed', onChanged);
-    ipcRenderer.on('file-watch-error', onError);
-    return () => {
-      ipcRenderer.removeListener('file-changed', onChanged);
-      ipcRenderer.removeListener('file-watch-error', onError);
-      // Stop watching when component unmounts
-      ipcRenderer.send('unwatch-file');
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ipcRenderer, watchedFilePath]);
+  // Removed auto-loading last path on mount to avoid caching previous file on boot
 
   // Removed unused handleOpenDialogueFile
 

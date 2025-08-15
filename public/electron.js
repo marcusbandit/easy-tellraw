@@ -44,6 +44,16 @@ ipcMain.handle('open-file-dialog', async (event, options) => {
   return result;
 });
 
+// Open directory picker dialog
+ipcMain.handle('open-directory-dialog', async (event, options) => {
+  const browserWindow = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(browserWindow, {
+    properties: ['openDirectory'],
+    ...options,
+  });
+  return result;
+});
+
 ipcMain.handle('read-file', async (_event, filePath) => {
   const data = await fs.promises.readFile(filePath, 'utf-8');
   return data;
@@ -52,6 +62,82 @@ ipcMain.handle('read-file', async (_event, filePath) => {
 ipcMain.handle('write-file', async (_event, filePath, content) => {
   await fs.promises.writeFile(filePath, content, 'utf-8');
   return true;
+});
+
+// Ensure datapack folder contains pack.mcmeta and return/create appropriate Tellraw file
+ipcMain.handle('ensure-tellraw-file', async (_event, datapackDir) => {
+  try {
+    if (!datapackDir || typeof datapackDir !== 'string') {
+      return { ok: false, code: 'INVALID_PATH', message: 'No datapack directory provided.' };
+    }
+    const dirStat = await fs.promises.stat(datapackDir).catch(() => null);
+    if (!dirStat || !dirStat.isDirectory()) {
+      return { ok: false, code: 'NOT_DIRECTORY', message: 'Path is not a directory.' };
+    }
+    const packMetaPath = path.join(datapackDir, 'pack.mcmeta');
+    const hasPackMcmeta = await fs.promises
+      .stat(packMetaPath)
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!hasPackMcmeta) {
+      return { ok: false, code: 'NO_PACK_MCMETA', message: 'Folder does not contain pack.mcmeta.' };
+    }
+    // Always create/use Easy-Tellraw folder with main.txt as default
+    const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
+    await fs.promises.mkdir(easyFolder, { recursive: true });
+    const filePath = path.join(easyFolder, 'main.txt');
+    const fileExists = await fs.promises
+      .stat(filePath)
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!fileExists) {
+      await fs.promises.writeFile(filePath, '', 'utf-8');
+      return { ok: true, filePath, created: true };
+    }
+    return { ok: true, filePath, created: false };
+  } catch (err) {
+    return { ok: false, code: 'ERROR', message: String(err?.message || err) };
+  }
+});
+
+// List all .txt files in the Easy-Tellraw folder
+ipcMain.handle('list-tellraw-files', async (_event, datapackDir) => {
+  try {
+    if (!datapackDir || typeof datapackDir !== 'string') {
+      return { ok: false, message: 'No datapack directory provided.' };
+    }
+    const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
+    const folderExists = await fs.promises
+      .stat(easyFolder)
+      .then((s) => s.isDirectory())
+      .catch(() => false);
+    if (!folderExists) {
+      return { ok: true, files: [] };
+    }
+    const files = await fs.promises.readdir(easyFolder);
+    const txtFiles = files
+      .filter(f => f.endsWith('.txt'))
+      .map(f => ({ name: f, path: path.join(easyFolder, f) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { ok: true, files: txtFiles };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+});
+
+// Rename a file in the Easy-Tellraw folder
+ipcMain.handle('rename-tellraw-file', async (_event, oldPath, newName) => {
+  try {
+    if (!oldPath || !newName) {
+      return { ok: false, message: 'Invalid parameters.' };
+    }
+    const dir = path.dirname(oldPath);
+    const newPath = path.join(dir, newName);
+    await fs.promises.rename(oldPath, newPath);
+    return { ok: true, newPath };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
 });
 
 ipcMain.on('watch-file', (event, filePath) => {

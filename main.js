@@ -104,6 +104,147 @@ ipcMain.on('unwatch-file', (event) => {
   clearWatchersFor(webContentsId);
 });
 
+// Ensure datapack folder contains pack.mcmeta and return/create appropriate Tellraw file
+ipcMain.handle('ensure-tellraw-file', async (_event, datapackDir) => {
+  try {
+    if (!datapackDir || typeof datapackDir !== 'string') {
+      return { ok: false, code: 'INVALID_PATH', message: 'No datapack directory provided.' };
+    }
+    const dirStat = await fs.promises.stat(datapackDir).catch(() => null);
+    if (!dirStat || !dirStat.isDirectory()) {
+      return { ok: false, code: 'NOT_DIRECTORY', message: 'Path is not a directory.' };
+    }
+    const packMetaPath = path.join(datapackDir, 'pack.mcmeta');
+    const hasPackMcmeta = await fs.promises
+      .stat(packMetaPath)
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!hasPackMcmeta) {
+      return { ok: false, code: 'NO_PACK_MCMETA', message: 'Folder does not contain pack.mcmeta.' };
+    }
+    // Always create/use Easy-Tellraw folder with main.txt as default
+    const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
+    await fs.promises.mkdir(easyFolder, { recursive: true });
+    
+    // Ensure styles.txt exists
+    const stylesPath = path.join(easyFolder, 'styles.txt');
+    const stylesExists = await fs.promises
+      .stat(stylesPath)
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!stylesExists) {
+      await fs.promises.writeFile(stylesPath, '', 'utf-8');
+    }
+    
+    const filePath = path.join(easyFolder, 'main.txt');
+    const fileExists = await fs.promises
+      .stat(filePath)
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!fileExists) {
+      await fs.promises.writeFile(filePath, '', 'utf-8');
+      return { ok: true, filePath, created: true };
+    }
+    return { ok: true, filePath, created: false };
+  } catch (err) {
+    return { ok: false, code: 'ERROR', message: String(err?.message || err) };
+  }
+});
+
+// List all .txt files in the Easy-Tellraw folder
+ipcMain.handle('list-tellraw-files', async (_event, datapackDir) => {
+  try {
+    if (!datapackDir || typeof datapackDir !== 'string') {
+      return { ok: false, message: 'No datapack directory provided.' };
+    }
+    const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
+    const folderExists = await fs.promises
+      .stat(easyFolder)
+      .then((s) => s.isDirectory())
+      .catch(() => false);
+    if (!folderExists) {
+      return { ok: true, files: [] };
+    }
+    const files = await fs.promises.readdir(easyFolder);
+    const txtFiles = files
+      .filter(f => f.endsWith('.txt'))
+      .map(f => ({ 
+        name: f.replace('.txt', ''), // Remove .txt extension for display
+        fullName: f, // Keep full filename for file operations
+        path: path.join(easyFolder, f),
+        isStyles: f === 'styles.txt' // Mark styles.txt as special
+      }))
+      .sort((a, b) => {
+        // Put styles.txt first, then sort alphabetically
+        if (a.isStyles) return -1;
+        if (b.isStyles) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    return { ok: true, files: txtFiles };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+});
+
+// Extract styles from content and move to styles.txt
+ipcMain.handle('extract-styles-to-file', async (_event, datapackDir, content) => {
+  try {
+    if (!datapackDir || typeof datapackDir !== 'string') {
+      return { ok: false, message: 'No datapack directory provided.' };
+    }
+    
+    const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
+    const stylesPath = path.join(easyFolder, 'styles.txt');
+    
+    // Extract @styles...@endstyles content
+    const stylesMatch = content.match(/@styles\s*([\s\S]*?)\s*@endstyles/i);
+    if (stylesMatch) {
+      const stylesContent = stylesMatch[1].trim();
+      await fs.promises.writeFile(stylesPath, stylesContent, 'utf-8');
+      
+      // Remove styles section from original content
+      const cleanedContent = content.replace(/@styles\s*[\s\S]*?\s*@endstyles\s*/gi, '').trim();
+      
+      return { ok: true, stylesContent, cleanedContent };
+    }
+    
+    return { ok: true, stylesContent: '', cleanedContent: content };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+});
+
+// Rename a file in the Easy-Tellraw folder
+ipcMain.handle('rename-tellraw-file', async (_event, oldPath, newName) => {
+  try {
+    if (!oldPath || !newName) {
+      return { ok: false, message: 'Invalid parameters.' };
+    }
+    
+    // Prevent renaming styles.txt
+    if (path.basename(oldPath) === 'styles.txt') {
+      return { ok: false, message: 'styles.txt cannot be renamed.' };
+    }
+    
+    const dir = path.dirname(oldPath);
+    const newPath = path.join(dir, newName);
+    await fs.promises.rename(oldPath, newPath);
+    return { ok: true, newPath };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+});
+
+// Open directory picker dialog
+ipcMain.handle('open-directory-dialog', async (event, options) => {
+  const browserWindow = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(browserWindow, {
+    properties: ['openDirectory'],
+    ...options,
+  });
+  return result;
+});
+
 // Cleanup watchers when a renderer is destroyed
 app.on('web-contents-destroyed', (_event, contents) => {
   clearWatchersFor(contents.id);
