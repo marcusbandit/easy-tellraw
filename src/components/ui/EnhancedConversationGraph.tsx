@@ -16,7 +16,52 @@ type OptionData = { id: string; label: string; color?: string; bold?: boolean; i
 // Kept intentionally (do not delete) for future debugging needs.
 const SHOW_NODE_DEBUG = false;
 
-const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineData[]; options: OptionData[]; isHovered?: boolean; isSelected?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number } }> = ({ data }) => {
+const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineData[]; options: OptionData[]; isHovered?: boolean; isSelected?: boolean; debugHeight?: number; debugOwnHeight?: number; debugTotalHeight?: number; debugOwnWidth?: number; debugTotalWidth?: number; isDuplicate?: boolean; hasIncoming?: boolean; cachedOverlayWidth?: number; setOverlayWidth?: (w: number) => void; cachedOverlayHeight?: number; setOverlayHeight?: (h: number) => void } }> = ({ data }) => {
+  const overlayRef = React.useRef<HTMLDivElement | null>(null);
+  const [overlayWidth, setOverlayWidth] = React.useState<number>(0);
+  const [overlayHeight, setOverlayHeight] = React.useState<number>(0);
+  const overlayRafRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    const el = overlayRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const entry = entries[0];
+      if (!entry) return;
+      const w = entry.contentRect.width;
+      const h = entry.contentRect.height;
+      if (overlayRafRef.current) cancelAnimationFrame(overlayRafRef.current);
+      overlayRafRef.current = requestAnimationFrame(() => {
+        setOverlayWidth(prev => {
+          const seeded = Math.max(prev, data.cachedOverlayWidth || 0);
+          const next = Math.max(seeded, Math.ceil(w));
+          return Math.abs(next - prev) > 0.5 ? next : prev;
+        });
+        setOverlayHeight(prev => (Math.abs(h - prev) > 0.5 ? Math.ceil(h) : prev));
+        try { data.setOverlayHeight?.(Math.ceil(h)); } catch {}
+      });
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      if (overlayRafRef.current) cancelAnimationFrame(overlayRafRef.current);
+      overlayRafRef.current = null;
+    };
+  }, []);
+  // Seed from cached overlay width/height to prevent bounce on first render
+  React.useEffect(() => {
+    if (typeof data.cachedOverlayWidth === 'number' && data.cachedOverlayWidth > 0 && overlayWidth === 0) {
+      setOverlayWidth(data.cachedOverlayWidth);
+    }
+    if (typeof data.cachedOverlayHeight === 'number' && data.cachedOverlayHeight > 0 && overlayHeight === 0) {
+      setOverlayHeight(data.cachedOverlayHeight);
+    }
+  }, [data.cachedOverlayWidth, data.cachedOverlayHeight, overlayWidth, overlayHeight]);
+  // Persist measured width back to cache
+  React.useEffect(() => {
+    // Debounce persistence and avoid thrashing during layout
+    const id = window.setTimeout(() => { try { data.setOverlayWidth?.(overlayWidth); } catch {} }, 50);
+    return () => window.clearTimeout(id);
+  }, [overlayWidth, data]);
   return (
     <div style={{
       padding: '16px',
@@ -25,8 +70,10 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
       border: data.isSelected ? '1px solid var(--accent-9)' : `1px solid ${data.isHovered ? '#aaaaaa' : '#444'}`,
       minWidth: 220,
       display: 'grid',
-      gridTemplateColumns: '1fr auto',
+      gridTemplateColumns: '1fr',
       columnGap: 16,
+      // Expand visual box width for overlay but keep node's visual height to text only
+      paddingRight: overlayWidth ? overlayWidth + 40 : undefined,
       boxShadow: data.isSelected
         ? '0 0 0 2px rgba(18,165,148,0.25)'
         : (data.isHovered ? '0 0 0 2px rgba(255,255,255,0.15)' : 'none'),
@@ -49,7 +96,7 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
       {/* Center-left target handle ("in" anchor) */}
       {/* Target handle aligned as originally (relative to node edge) */}
       <Handle type="target" position={Position.Left} id="in" style={{ left: -8, background: '#666', width: 8, height: 8, top: '50%', transform: 'translateY(-50%)' }} />
-      <div style={{ maxWidth: 512, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+      <div style={{ maxWidth: 512, overflowWrap: 'anywhere', wordBreak: 'break-word', alignSelf: 'start' }}>
         <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 'var(--mc-font-size-2)' }}>{data.label}</div>
         <div>
           {data.lines.map((l, i) => {
@@ -116,8 +163,10 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
           })}
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', marginRight: -32 }}>
-        {data.options.map((opt) => {
+      {/* Overlay box: render only when this instance actually has options (primary/non-dup) */}
+      {Array.isArray((data as any).options) && (data as any).options.length > 0 && (
+        <div ref={overlayRef} style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: -32, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', padding: 8, background: 'rgba(48,48,48,0.95)', border: '1px solid #555', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
+          {data.options.map((opt) => {
           const style: CSSProperties = {
             color: opt.color || '#cccccc',
             fontSize: 14,
@@ -141,7 +190,8 @@ const SceneNode: React.FC<{ data: { id: string; label: string; lines: SceneLineD
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -236,7 +286,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     return () => clearTimeout(timer);
   }, []);
 
-  const loadLayoutCache = useCallback((): { positions?: Record<string, { x: number; y: number }>; viewport?: { x: number; y: number; zoom: number }; targets?: Record<string, { x: number; y: number }> } | null => {
+  const loadLayoutCache = useCallback((): { positions?: Record<string, { x: number; y: number }>; viewport?: { x: number; y: number; zoom: number }; targets?: Record<string, { x: number; y: number }>; overlayWidths?: Record<string, number>; overlayHeights?: Record<string, number> } | null => {
     try {
       const raw = localStorage.getItem(CACHE_KEY);
       if (!raw) return null;
@@ -251,7 +301,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
   const saveLayoutCache = useCallback(() => {
     try {
       const [tx, ty, tz] = transformRef.current || [0, 0, 1];
-      const payload = { positions: posRef.current, viewport: { x: tx, y: ty, zoom: tz }, targets: desiredTargetsRef.current };
+      const payload = { positions: posRef.current, viewport: { x: tx, y: ty, zoom: tz }, targets: desiredTargetsRef.current, overlayWidths: overlayWidthCacheRef.current, overlayHeights: overlayHeightCacheRef.current };
       localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
     } catch (_e) {
       // ignore
@@ -275,6 +325,9 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
   const lastDebugUpdateRef = useRef<number>(0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const [debugVersion, setDebugVersion] = useState(0);
+  // Cache for measured overlay sizes per node to avoid bouncing when culled
+  const overlayWidthCacheRef = useRef<Record<string, number>>({});
+  const overlayHeightCacheRef = useRef<Record<string, number>>({});
   // Physics parameters (tunable)
   // Link distance is now computed dynamically per parent; keep only smoothing
   const [smoothingAlpha] = useState(0.1);
@@ -652,6 +705,13 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     if (cache?.targets && typeof cache.targets === 'object') {
       desiredTargetsRef.current = cache.targets as Record<string, { x: number; y: number }>;
     }
+    // hydrate overlay sizes cache
+    if (cache?.overlayWidths && typeof cache.overlayWidths === 'object') {
+      overlayWidthCacheRef.current = cache.overlayWidths as Record<string, number>;
+    }
+    if (cache?.overlayHeights && typeof cache.overlayHeights === 'object') {
+      overlayHeightCacheRef.current = cache.overlayHeights as Record<string, number>;
+    }
     // If a node is an orphan (no incoming edges) and has a cached position, treat it as pinned
     try {
       const incoming: Record<string, number> = {};
@@ -698,7 +758,10 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     (graphNodes as any[]).forEach((n: any) => {
       const fallbackH = n.type === 'ghost' ? 40 : 160;
       const fallbackW = n.type === 'ghost' ? 140 : 520;
-      nextHeights[n.id] = (n as any).height ?? fallbackH;
+      // Use the taller of own measured height and any overlay height cached
+      const ownH = (n as any).height ?? fallbackH;
+      const overlayH = overlayHeightCacheRef.current ? (overlayHeightCacheRef.current as any)[n.id] ?? 0 : 0;
+      nextHeights[n.id] = Math.max(ownH, overlayH);
       nextWidths[n.id] = (n as any).width ?? fallbackW;
     });
     const prev = ownHeightMapRef.current;
@@ -971,7 +1034,9 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       const fallbackH = n.type === 'ghost' ? 40 : 160;
       // React Flow will populate width/height after measurement; fall back if undefined
       const w = (n as any).width ?? fallbackW;
-      const h = (n as any).height ?? fallbackH;
+      const measuredH = (n as any).height ?? fallbackH;
+      const overlayH = overlayHeightCacheRef.current[(n as any).id] ?? 0;
+      const h = Math.max(measuredH, overlayH);
       dims[n.id] = { w, h, type: n.type };
     });
 
@@ -1589,16 +1654,32 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     if (!graphNodes) return [] as any[];
     const prevHovered = prevHoveredSceneIdRef.current;
     if (!SHOW_NODE_DEBUG) {
-      // Fast path: only update nodes whose hover state changed
+      // Always enrich node data so overlays behave consistently across instances
       return (graphNodes as any[]).map(n => {
         const logicalSceneId = (n as any).data?.id as string | undefined;
         const nowHovered = !!logicalSceneId && hoveredSceneId === logicalSceneId;
-        const wasHovered = !!logicalSceneId && prevHovered === logicalSceneId;
         const isSelected = !!logicalSceneId && selectedSceneId === logicalSceneId;
-        if (!nowHovered && !wasHovered && !isSelected && !(n as any).data?.isSelected) return n;
         return {
           ...n,
-          data: { ...(n.data || {}), isHovered: nowHovered, isSelected },
+          data: {
+            ...(n.data || {}),
+            isHovered: nowHovered,
+            isSelected,
+            isDuplicate: String(n.id).startsWith('dup:'),
+            hasIncoming: (edges as any[]).some(e => String((e as any).target) === String(n.id)),
+            cachedOverlayWidth: overlayWidthCacheRef.current[n.id],
+            cachedOverlayHeight: overlayHeightCacheRef.current[n.id],
+            setOverlayWidth: (w: number) => {
+              if (typeof w !== 'number' || !isFinite(w) || w <= 0) return;
+              const prev = overlayWidthCacheRef.current[n.id] ?? 0;
+              if (w > prev + 0.5) overlayWidthCacheRef.current[n.id] = w;
+            },
+            setOverlayHeight: (h: number) => {
+              if (typeof h !== 'number' || !isFinite(h) || h <= 0) return;
+              const prev = overlayHeightCacheRef.current[n.id] ?? 0;
+              if (h > prev + 0.5) overlayHeightCacheRef.current[n.id] = h;
+            },
+          },
           style: nowHovered || isSelected ? { ...(n.style || {}), zIndex: 2 } : n.style,
         } as any;
       });
@@ -1609,7 +1690,9 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       const fallbackW = n.type === 'ghost' ? 140 : 520;
       const fallbackH = n.type === 'ghost' ? 40 : 160;
       const w = (n as any).width ?? fallbackW;
-      const h = (n as any).height ?? fallbackH;
+      const measuredH = (n as any).height ?? fallbackH;
+      const overlayH = overlayHeightCacheRef.current[(n as any).id] ?? 0;
+      const h = Math.max(measuredH, overlayH);
       dimsLocal[n.id] = { w, h, type: n.type };
     });
     const mapping = parentToChildrenRef.current;
@@ -1647,7 +1730,23 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       const totalW = computeChainWidthDisplay(n.id);
       return {
         ...n,
-        data: { ...(n.data || {}), isHovered, debugHeight: totalH, debugOwnHeight: ownH, debugTotalHeight: totalH, debugOwnWidth: ownW, debugTotalWidth: totalW },
+        data: {
+          ...(n.data || {}),
+          isHovered,
+          debugHeight: totalH,
+          debugOwnHeight: ownH,
+          debugTotalHeight: totalH,
+          debugOwnWidth: ownW,
+          debugTotalWidth: totalW,
+          isDuplicate: String(n.id).startsWith('dup:'),
+          hasIncoming: (edges as any[]).some(e => String((e as any).target) === String(n.id)),
+          cachedOverlayWidth: overlayWidthCacheRef.current[n.id],
+          setOverlayWidth: (w: number) => {
+            if (typeof w !== 'number' || !isFinite(w) || w <= 0) return;
+            const prev = overlayWidthCacheRef.current[n.id] ?? 0;
+            if (w > prev + 0.5) overlayWidthCacheRef.current[n.id] = w;
+          },
+        },
         // slight wrapper elevation as a fallback (main styling handled inside node components)
         style: isHovered ? { ...(n.style || {}), zIndex: 2 } : n.style,
       } as any;
@@ -1695,7 +1794,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
           fitView={!hasCachedLayout}
           defaultViewport={hasCachedLayout && initialViewport ? initialViewport : undefined}
           proOptions={{ hideAttribution: true }}
-          onlyRenderVisibleElements
+          onlyRenderVisibleElements={false}
           onInit={(instance) => {
             flowInstanceRef.current = instance as ReactFlowInstance;
             // hydrate any last targets into overlay if debug shows
