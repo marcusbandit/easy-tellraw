@@ -1,11 +1,10 @@
 @styles
-style.danger color=#f10430 bold=true italic=true underline=tru
-style.normal color=#d51515
-style.primary color=#2D6CDF
-style.shop_item color=#AA5140
-style.warning color=#FFC107
+style.normal color=#d51515 bold=true italic=true underline=true strikethrough=true
+style.primary color=#2D6CDF strikethrough=true
+style.shop_item color=#AA5140 strikethrough=true
+style.warning color=#FFC107 underline=true
 
-character.Elder name_color=#5FCF7F text_color=#A0FF9F
+character.Elder name_color=#e81b1b text_color=#A0FF9F
 character.Guard name_color=#8C8C8C text_color=#D0D0D0
 character.Jordan name_color=#4f57dd text_color=#56C0FF
 character.Kara name_color=#B04A7A text_color=#FF6BAA
@@ -22,7 +21,9 @@ iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
 
 @start
 {character.Narrator} {italic}The wind howls through the empty streets...{/}
-{character.Jordan} Kara!, we need to decide. [Go to the market -> @market_entry]{style=primary} [Head to the guard tower -> @guard_tower_entry]{style=warning} [Check map -> ui:map/open]{color=#00FFC8}
+{character.Jordan} Kara!, we need to decide. 
+[Go to the market -> @market_entry]{style=primary} 
+[Head to the guard tower -> @guard_tower_entry]{style=warning} [Check map -> ui:map/open]{color=#00FFC8}
 {character.Kara} Or we could just go home. [Go home -> @go_home]{style=danger}
 
 @market_entry
@@ -32,7 +33,7 @@ Stab yourself? [Stab stab -> execute as @s run damage @s sword 10]
 
 @market_browse
 {character.Merchant} We’ve got a bit of everything. What are you after?  
-{bold}Potions{/}: [Potion -> shop:potions/buy_health]{style=shop_item}  
+{bold}Potions{/}: [Potions -> shop:potions/buy_health]{style=shop_item}  
 {bold}Weapons{/}: [Sword -> shop:weapons/buy_sword]{style=shop_item}  
 {bold}Armor{/}: [Shield -> shop:armor/buy_shield]{style=shop_item} [Cloak -> shop:armor/buy_cloak]{style=shop_item}  
 {bold}Tools{/}: [Lockpick -> shop:tools/buy_lockpick]{style=shop_item} [Lantern -> shop:tools/buy_lantern]{style=shop_item} [Rope -> shop:tools/buy_rope]{style=shop_item} [Chain -> shop:tools/buy_chain]{style=shop_item} [Map -> shop:tools/buy_map]{style=shitem}  
@@ -54,7 +55,10 @@ Stab yourself? [Stab stab -> execute as @s run damage @s sword 10]
 {character.Thief} {italic}Psst{/}, I saw that. Want in on a bigger job? [Yes -> @thief_job_offer]{style=primary} [No -> @market_browse]
 
 @thief_job_offer
-{character.Thief} Meet me at midnight by the docks. [Agree -> @docks_meet] [Refuse -> @market_browse]
+{character.Thief} Meet me at midnight by the docks. [Agree -> @docks_meet] [Ask question -> @thief_dumb_question] [Refuse -> @market_browse]
+
+@thief_dumb_question
+{character.Jordan} Sorry... But where are the docks?
 
 @market_leave
 {character.Jordan} Let’s move on. [Go to forest -> @forest_entry] [Go to guard tower -> @guard_tower_entry]

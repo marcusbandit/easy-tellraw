@@ -20,7 +20,7 @@ const allowedInlineKeys = new Set<string>([
 const inlineBooleanKeys = new Set<string>(['italic','bold','underline','underlined','strikethrough']);
 
 const allowedStylesBlockKeys = new Set<string>([
-	'color', 'style', 'italic', 'bold', 'underlined', 'strikethrough'
+	'color', 'style', 'italic', 'bold', 'underline', 'underlined', 'strikethrough'
 ]);
 
 function computeKnowns(source: string) {
@@ -131,7 +131,19 @@ function computeDiagnostics(doc: string): Diagnostic[] {
 			while ((am = assignRe.exec(inner)) !== null) {
 				const key = am[1];
 				const value = am[4];
-				if (inlineBooleanKeys.has(key) && !/^(true|false)$/i.test(value)) {
+				// Suggest for style=NAME on the value side
+				if ((key === 'style' || /_style$/i.test(key)) && value && !knownStyles.has(value)) {
+					const suggestion = suggestClosest(value, Array.from(knownStyles));
+					if (suggestion) {
+						const valueStart = offsetBase + m.index + 1 + am.index + am[1].length + am[2].length + 1 + am[3].length;
+						const from = valueStart;
+						const to = valueStart + value.length;
+						const msg = `Warning: unknown style '${value}'\nDid you mean:`;
+						const actions = [{ name: `${suggestion}`, apply: (view: EditorView) => view.dispatch({ changes: { from, to, insert: suggestion } }) }];
+						diags.push({ from, to, severity: 'warning', message: msg, actions: actions as any });
+					}
+				}
+				if ((inlineBooleanKeys.has(key) || /^(?:name|text)_(?:italic|bold|underline|underlined|strikethrough)$/i.test(key)) && !/^(true|false)$/i.test(value)) {
 					const suggestion = suggestClosest(value, ['true','false']);
 					if (suggestion) {
 						const valueStart = offsetBase + m.index + 1 + am.index + am[1].length + am[2].length + 1 + am[3].length;
@@ -146,39 +158,59 @@ function computeDiagnostics(doc: string): Diagnostic[] {
 		}
 		// In styles block: validate keys, colors, booleans
         if (inStyles && /^(style\.|character\.|button\.)/i.test(t)) {
-            const [, props = ''] = t.split(/\s+/, 2);
-            if (props) {
-                let p = ln.indexOf(props);
-                const parts = props.split(/\s+/);
-                for (const kv of parts) {
-                    const [key, value] = kv.split('=');
+            // Compute props start precisely from the original line (not trimmed)
+            const headerMatch = ln.match(/^(\s*)(style|character|button)\.[A-Za-z0-9_-]+(\s+)/i);
+            if (headerMatch) {
+                const propsStart = headerMatch[0].length;
+                const props = ln.slice(propsStart);
+                const assignRe = /([A-Za-z_][A-Za-z0-9_]*)(\s*)=(\s*)(\S+)/g;
+                let am: RegExpExecArray | null;
+                while ((am = assignRe.exec(props)) !== null) {
+                    const key = am[1];
+                    const value = am[4];
+                    const keyFromAbs = offsetBase + propsStart + am.index;
+                    const keyToAbs = keyFromAbs + key.length;
+                    const valueFromAbs = offsetBase + propsStart + am.index + am[1].length + am[2].length + 1 + am[3].length;
+                    const valueToAbs = valueFromAbs + value.length;
                     const keyAllowed = allowedStylesBlockKeys.has(key) || /^name_.+/.test(key) || /^text_.+/.test(key);
                     if (!keyAllowed) {
-                        const from = offsetBase + p;
-                        const to = offsetBase + p + key.length;
                         const candidates = ['color','style','bold','italic','underline','underlined','strikethrough','name_color','name_bold','name_italic','name_underline','name_underlined','name_strikethrough','text_color','text_bold','text_italic','text_underline','text_underlined','text_strikethrough'];
                         const suggestion = suggestClosest(key, candidates);
                         const msg = `Warning: unknown property '${key}'\nDid you mean:`;
-                        const actions = suggestion ? [{ name: `${suggestion}`, apply: (view: EditorView) => view.dispatch({ changes: { from, to, insert: suggestion } }) }] : undefined;
-                        diags.push({ from, to, severity: 'warning', message: msg, actions: actions as any });
-                    } else if ((key === 'color' || /_color$/i.test(key)) && !/^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/.test(value || '')) {
-                        const valStart = p + key.length + 1;
-                        diags.push({
-                            from: offsetBase + valStart,
-                            to: offsetBase + valStart + (value ? value.length : 0),
-                            severity: 'warning',
-                            message: `Warning: invalid color value '${value}'.`
-                        });
-                    } else if ((key === 'italic' || key === 'bold' || key === 'underline' || key === 'underlined' || key === 'strikethrough') && value !== 'true') {
-                        const valStart = p + key.length + 1;
-                        const from = offsetBase + valStart;
-                        const to = offsetBase + valStart + (value ? value.length : 0);
+                        const actions = suggestion ? [{ name: `${suggestion}`, apply: (view: EditorView) => view.dispatch({ changes: { from: keyFromAbs, to: keyToAbs, insert: suggestion } }) }] : undefined;
+                        diags.push({ from: keyFromAbs, to: keyToAbs, severity: 'warning', message: msg, actions: actions as any });
+                        if (typeof value === 'string' && value.length > 0) {
+                            const boolSuggestion = suggestClosest(value, ['true','false']);
+                            if (boolSuggestion) {
+                                const vMsg = `Warning: invalid value '${value}'\nDid you mean:`;
+                                const vActions = [{ name: `${boolSuggestion}`, apply: (view: EditorView) => view.dispatch({ changes: { from: valueFromAbs, to: valueToAbs, insert: boolSuggestion } }) }];
+                                diags.push({ from: valueFromAbs, to: valueToAbs, severity: 'warning', message: vMsg, actions: vActions as any });
+                            }
+                        }
+                        continue;
+                    }
+                    if ((key === 'color' || /_color$/i.test(key)) && !/^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/.test(value || '')) {
+                        const missingHash = value ? /^([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/.test(value) : false;
+                        const suggestion = missingHash && value ? `#${value}` : undefined;
+                        const msg = `Warning: invalid color value '${value}'` + (suggestion ? `\nDid you mean:` : '');
+                        const actions = suggestion ? [{ name: `${suggestion}`, apply: (view: EditorView) => view.dispatch({ changes: { from: valueFromAbs, to: valueToAbs, insert: suggestion } }) }] : undefined;
+                        diags.push({ from: valueFromAbs, to: valueToAbs, severity: 'warning', message: msg, actions: actions as any });
+                        continue;
+                    }
+                    if (key === 'style' && value && !knownStyles.has(value)) {
+                        const suggestion = suggestClosest(value, Array.from(knownStyles));
+                        const msg = `Warning: unknown style '${value}'\nDid you mean:`;
+                        const actions = suggestion ? [{ name: `${suggestion}`, apply: (view: EditorView) => view.dispatch({ changes: { from: valueFromAbs, to: valueToAbs, insert: suggestion } }) }] : undefined;
+                        diags.push({ from: valueFromAbs, to: valueToAbs, severity: 'warning', message: msg, actions: actions as any });
+                        continue;
+                    }
+                    if ((key === 'italic' || key === 'bold' || key === 'underline' || key === 'underlined' || key === 'strikethrough') && value !== 'true') {
                         const suggestion = suggestClosest(String(value || ''), ['true']);
                         const msg = `Warning: boolean property '${key}' must be 'true' if present\nDid you mean:`;
-                        const actions = suggestion ? [{ name: `${suggestion}`, apply: (view: EditorView) => view.dispatch({ changes: { from, to, insert: 'true' } }) }] : undefined;
-                        diags.push({ from, to, severity: 'warning', message: msg, actions: actions as any });
+                        const actions = suggestion ? [{ name: `${suggestion}`, apply: (view: EditorView) => view.dispatch({ changes: { from: valueFromAbs, to: valueToAbs, insert: 'true' } }) }] : undefined;
+                        diags.push({ from: valueFromAbs, to: valueToAbs, severity: 'warning', message: msg, actions: actions as any });
+                        continue;
                     }
-                    p += kv.length + 1;
                 }
             }
         }
@@ -232,24 +264,24 @@ const cmTheme = EditorView.theme({
 	},
 	'.cm-content': { caretColor: 'var(--gray-a12)' },
 	'.cm-gutters': { backgroundColor: 'transparent', borderRight: '1px solid var(--gray-a6)' },
-	'.cm-lintRange': { textDecoration: 'underline wavy #F59E0B' },
-    '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.06)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(255,255,255,0.06)' },
+	'.cm-lintRange': { textDecoration: `underline wavy ${syntaxColors.lintWarning}` },
+    '.cm-activeLine': { backgroundColor: syntaxColors.activeLineBg },
+    '.cm-activeLineGutter': { backgroundColor: syntaxColors.activeLineGutterBg },
 	'& .cm-tooltip.cm-tooltip-lint': {
-		background: '#1C1F20',
-		color: '#F59E0B',
-		border: '1px solid #F59E0B',
+		background: syntaxColors.tooltipBg,
+		color: syntaxColors.tooltipText,
+		border: `1px solid ${syntaxColors.tooltipBorder}`,
 		borderRadius: '8px',
 		padding: '8px 8px',
 		fontSize: 'var(--raw-font-size-1)',
 		maxWidth: '280px',
-		boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+		boxShadow: `0 2px 8px ${syntaxColors.shadowColor}`
 	},
 	'& .cm-tooltip.cm-tooltip-lint .cm-diagnostic': {
-		color: '#F59E0B'
+		color: syntaxColors.tooltipText
 	},
 	'& .cm-tooltip.cm-tooltip-lint .cm-diagnosticText': {
-		color: '#F59E0B'
+		color: syntaxColors.tooltipText
 	},
     '& .cm-scroller::-webkit-scrollbar': {
         width: '10px',
@@ -294,8 +326,27 @@ function buildHighlightDecorations(state: EditorState): DecorationSet {
         const line = state.doc.line(i);
         const text = line.text;
         const trimmed = text.trim();
-        if (/^@styles\s*$/i.test(trimmed)) { inStyles = true; continue; }
-        if (/^@endstyles\s*$/i.test(trimmed)) { inStyles = false; continue; }
+        // Highlight @styles / @endstyles in yellow and update state
+        if (/^@styles\s*$/i.test(trimmed)) {
+            const idx = text.toLowerCase().indexOf('@styles');
+            if (idx >= 0) {
+                const from = line.from + idx;
+                const to = from + '@styles'.length;
+                pieces.push({ from, to, deco: Decoration.mark({ attributes: { style: `color:${syntaxColors.bracket}` } }) });
+            }
+            inStyles = true;
+            continue;
+        }
+        if (/^@endstyles\s*$/i.test(trimmed)) {
+            const idx = text.toLowerCase().indexOf('@endstyles');
+            if (idx >= 0) {
+                const from = line.from + idx;
+                const to = from + '@endstyles'.length;
+                pieces.push({ from, to, deco: Decoration.mark({ attributes: { style: `color:${syntaxColors.bracket}` } }) });
+            }
+            inStyles = false;
+            continue;
+        }
         // Compute inner ranges inside {...}
         const contentRanges: Array<[number, number]> = [];
         const braceContentRe = /\{[^}]*\}/g;
@@ -338,7 +389,7 @@ function buildHighlightDecorations(state: EditorState): DecorationSet {
                 const a = parseInt(hex.slice(6, 8), 16) / 255;
                 cssColor = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
             }
-            pieces.push({ from, to, deco: Decoration.mark({ attributes: { style: `background-color:${cssColor}; color:#fff; border-radius:2px` } }) });
+            pieces.push({ from, to, deco: Decoration.mark({ attributes: { style: `background-color:${cssColor}; color:${syntaxColors.colorChipText}; border-radius:2px` } }) });
         }
         // Brackets []
         const bracketRe = /\[|\]/g;
@@ -397,15 +448,39 @@ function buildHighlightDecorations(state: EditorState): DecorationSet {
                 pieces.push({ from: eqFrom, to: eqTo, deco: Decoration.mark({ attributes: { style: `color:${syntaxColors.punctuation}` } }) });
             }
         }
+        // Highlight style value in assignments like style=NAME with a greenish accent
+        {
+            const styleAssignRe = /(^|[^A-Za-z0-9_])(style)(\s*)(=)(\s*)([A-Za-z0-9_-]+)/g;
+            let sm: RegExpExecArray | null;
+            while ((sm = styleAssignRe.exec(text)) !== null) {
+                const valFrom = line.from + sm.index + sm[1].length + sm[2].length + sm[3].length + sm[4].length + sm[5].length;
+                const valTo = valFrom + sm[6].length;
+                if (insideContext(valFrom) && !overlapsReplacement(valFrom, valTo)) {
+                    pieces.push({ from: valFrom, to: valTo, deco: Decoration.mark({ attributes: { style: `color:${syntaxColors.string}` } }) });
+                }
+            }
+        }
         // Values immediately after '=': color true/false only when full token matches
         const valueRe = /=\s*(true|false)\b/g;
         while ((m = valueRe.exec(text)) !== null) {
             const val = m[1];
             const start = line.from + m.index + m[0].indexOf(val);
             const end = start + val.length;
-            const color = val === 'true' ? '#4ade80' : '#f87171';
+            const color = val === 'true' ? syntaxColors.booleanTrue : syntaxColors.booleanFalse;
             if (insideContext(start) && !overlapsReplacement(start, end)) {
                 pieces.push({ from: start, to: end, deco: Decoration.mark({ attributes: { style: `color:${color}` } }) });
+            }
+        }
+        // Presence-only boolean flags (bold, italic, underline, underlined, strikethrough) inside parameter sections
+        {
+            const presenceRe = /(^|[^A-Za-z0-9_])(bold|italic|underline|underlined|strikethrough)(?!\s*=)\b/g;
+            let pm2: RegExpExecArray | null;
+            while ((pm2 = presenceRe.exec(text)) !== null) {
+                const keyFrom = line.from + pm2.index + pm2[1].length;
+                const keyTo = keyFrom + pm2[2].length;
+                if (insideContext(keyFrom) && !overlapsReplacement(keyFrom, keyTo)) {
+                    pieces.push({ from: keyFrom, to: keyTo, deco: Decoration.mark({ attributes: { style: `color:${syntaxColors.property}` } }) });
+                }
             }
         }
         // @refs
