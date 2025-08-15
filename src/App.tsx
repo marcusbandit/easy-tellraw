@@ -1098,16 +1098,16 @@ const App: React.FC = () => {
       if (!filesResult?.ok) return;
       
       let combinedContent = '';
-      let stylesContent = '';
+      let allStylesContent = '';
       
       for (const file of filesResult.files) {
         try {
           const fileContent = await ipcRenderer.invoke('read-file', file.path);
           
           if (file.isStyles) {
-            stylesContent = fileContent;
-            if (combinedContent) combinedContent += '\n\n';
-            combinedContent += `@styles\n${stylesContent}\n@endstyles`;
+            // Collect styles content separately, don't add to combinedContent yet
+            if (allStylesContent) allStylesContent += '\n\n';
+            allStylesContent += fileContent;
           } else {
             if (combinedContent) combinedContent += '\n\n';
             combinedContent += fileContent;
@@ -1117,103 +1117,110 @@ const App: React.FC = () => {
         }
       }
       
-      // Extract and consolidate styles
-      const stylesMatch = combinedContent.match(/@styles\s*([\s\S]*?)\s*@endstyles/gi);
-      if (stylesMatch) {
-        const seenStyles = new Set<string>();
-        const styleCategories = {
-          style: [] as string[],
-          character: [] as string[],
-          button: [] as string[]
-        };
-        
-        for (const match of stylesMatch) {
-          const content = match.replace(/@styles\s*/i, '').replace(/\s*@endstyles\s*/i, '');
-          if (content.trim()) {
-            const lines = content.split('\n');
-            for (const line of lines) {
-              const trimmedLine = line.trim();
-              if (!trimmedLine) continue;
-              
-              const styleMatch = trimmedLine.match(/^(style\.[^\s]+|character\.[^\s]+|button\.[^\s]+)/);
-              if (styleMatch) {
-                const styleId = styleMatch[1];
-                if (!seenStyles.has(styleId)) {
-                  seenStyles.add(styleId);
-                  
-                  // Categorize the style
-                  if (styleId.startsWith('style.')) {
-                    styleCategories.style.push(trimmedLine);
-                  } else if (styleId.startsWith('character.')) {
-                    styleCategories.character.push(trimmedLine);
-                  } else if (styleId.startsWith('button.')) {
-                    styleCategories.button.push(trimmedLine);
+      // Process styles content separately
+      if (allStylesContent) {
+        const stylesMatch = allStylesContent.match(/@styles\s*([\s\S]*?)\s*@endstyles/gi);
+        if (stylesMatch) {
+          const seenStyles = new Set<string>();
+          const styleCategories = {
+            style: [] as string[],
+            character: [] as string[],
+            button: [] as string[]
+          };
+          
+          for (const match of stylesMatch) {
+            const content = match.replace(/@styles\s*/i, '').replace(/\s*@endstyles\s*/i, '');
+            if (content.trim()) {
+              const lines = content.split('\n');
+              for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (!trimmedLine) continue;
+                
+                const styleMatch = trimmedLine.match(/^(style\.[^\s]+|character\.[^\s]+|button\.[^\s]+)/);
+                if (styleMatch) {
+                  const styleId = styleMatch[1];
+                  if (!seenStyles.has(styleId)) {
+                    seenStyles.add(styleId);
+                    
+                    // Categorize the style
+                    if (styleId.startsWith('style.')) {
+                      styleCategories.style.push(trimmedLine);
+                    } else if (styleId.startsWith('character.')) {
+                      styleCategories.character.push(trimmedLine);
+                    } else if (styleId.startsWith('button.')) {
+                      styleCategories.button.push(trimmedLine);
+                    }
                   }
                 }
-              } else {
-                // Non-style lines are always included
-                // We'll add these at the end
               }
             }
           }
+          
+          // Sort each category and create formatted styles content
+          const sortedStyles: string[] = [];
+          
+          // Add style.* definitions first
+          if (styleCategories.style.length > 0) {
+            sortedStyles.push(...styleCategories.style.sort());
+          }
+          
+          // Add spacing and character.* definitions
+          if (styleCategories.character.length > 0) {
+            if (sortedStyles.length > 0) sortedStyles.push('');
+            sortedStyles.push(...styleCategories.character.sort());
+          }
+          
+          // Add spacing and button.* definitions
+          if (styleCategories.button.length > 0) {
+            if (sortedStyles.length > 0) sortedStyles.push('');
+            sortedStyles.push(...styleCategories.button.sort());
+          }
+          
+          // Create the final formatted styles content
+          const formattedStylesContent = sortedStyles.join('\n');
+          const finalContent = `@styles\n${formattedStylesContent}\n@endstyles\n\n${combinedContent}`;
+          
+          // Update the combined content
+          setCombinedDialogueSource(finalContent);
+          
+          // Check references in the combined content
+          checkReferencesInCombinedContent(finalContent);
+          
+          // Parse the combined content for the graph editor
+          try {
+            const graph = parseDialogue(finalContent);
+            setDialogueGraph(graph);
+          } catch (err) {
+            console.warn('Failed to parse combined dialogue:', err);
+          }
+          
+          return finalContent;
+        } else {
+          // No styles found, just use the combined content
+          setCombinedDialogueSource(combinedContent);
+          checkReferencesInCombinedContent(combinedContent);
+          try {
+            const graph = parseDialogue(combinedContent);
+            setDialogueGraph(graph);
+          } catch (err) {
+            console.warn('Failed to parse combined dialogue:', err);
+          }
+          
+          return combinedContent;
         }
-        
-        // Remove @styles sections and create final content
-        combinedContent = combinedContent.replace(/@styles\s*[\s\S]*?\s*@endstyles\s*/gi, '').trim();
-        
-        // Sort each category and create formatted styles content
-        const sortedStyles: string[] = [];
-        
-        // Add style.* definitions first
-        if (styleCategories.style.length > 0) {
-          sortedStyles.push(...styleCategories.style.sort());
-        }
-        
-        // Add spacing and character.* definitions
-        if (styleCategories.character.length > 0) {
-          if (sortedStyles.length > 0) sortedStyles.push('');
-          sortedStyles.push(...styleCategories.character.sort());
-        }
-        
-        // Add spacing and button.* definitions
-        if (styleCategories.button.length > 0) {
-          if (sortedStyles.length > 0) sortedStyles.push('');
-          sortedStyles.push(...styleCategories.button.sort());
-        }
-        
-        // Create the final formatted styles content
-        const formattedStylesContent = sortedStyles.join('\n');
-        const finalContent = formattedStylesContent ? `@styles\n${formattedStylesContent}\n@endstyles\n\n${combinedContent}` : combinedContent;
-        
-        // Update the combined content
-        setCombinedDialogueSource(finalContent);
-        
-        // Check references in the combined content
-        checkReferencesInCombinedContent(finalContent);
-        
-        // Parse the combined content for the graph editor
+      } else {
+        // No styles files, just use the combined content
+        setCombinedDialogueSource(combinedContent);
+        checkReferencesInCombinedContent(combinedContent);
         try {
-          const graph = parseDialogue(finalContent);
+          const graph = parseDialogue(combinedContent);
           setDialogueGraph(graph);
         } catch (err) {
           console.warn('Failed to parse combined dialogue:', err);
         }
         
-        return finalContent;
+        return combinedContent;
       }
-      
-      // If no styles, just use the combined content
-      setCombinedDialogueSource(combinedContent);
-      checkReferencesInCombinedContent(combinedContent);
-      
-      try {
-        const graph = parseDialogue(combinedContent);
-        setDialogueGraph(graph);
-      } catch (err) {
-        console.warn('Failed to parse combined dialogue:', err);
-      }
-      
-      return combinedContent;
     } catch (err) {
       console.warn('Failed to update combined content:', err);
       return null;
@@ -1388,10 +1395,12 @@ const App: React.FC = () => {
       let cleanedContent = content; // Declare outside the if/else blocks
       
       if (newFile.isStyles) {
-        // For styles, merge with existing styles
-        const existingStyles = combinedDialogueSource.match(/@styles\s*([\s\S]*?)\s*@endstyles/i)?.[1] || '';
-        const newCombined = `@styles\n${existingStyles}\n${content}\n@endstyles\n\n${combinedDialogueSource.replace(/@styles\s*[\s\S]*?\s*@endstyles\s*/gi, '').trim()}`;
-        setCombinedDialogueSource(newCombined);
+        // For styles, let updateCombinedContentAndCheckReferences handle the merging
+        // Don't manually build combined content here
+        // Update combined content after styles are added
+        if (datapackDirInput) {
+          updateCombinedContentAndCheckReferences();
+        }
       } else {
         // For dialogue files, extract and move styles to styles.txt, then append cleaned content
         let stylesToMove = '';
