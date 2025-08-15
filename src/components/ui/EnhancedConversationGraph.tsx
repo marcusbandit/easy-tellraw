@@ -633,8 +633,13 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     const nextPos: Record<string, { x: number; y: number }> = {};
     const nextVel: Record<string, { vx: number; vy: number }> = {};
     (nextNodesInit as any[]).forEach((n: any) => {
-      nextPos[n.id] = { x: n.position.x, y: n.position.y };
-      nextVel[n.id] = { vx: 0, vy: 0 };
+      // Ensure node has valid position before adding to physics state
+      if (n.position && typeof n.position.x === 'number' && typeof n.position.y === 'number') {
+        nextPos[n.id] = { x: n.position.x, y: n.position.y };
+        nextVel[n.id] = { vx: 0, vy: 0 };
+      } else {
+        console.warn(`Node ${n.id} has invalid position:`, n.position);
+      }
     });
     posRef.current = nextPos;
     velRef.current = nextVel;
@@ -1378,10 +1383,29 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
         parentChildTargetY[parentId] = targets;
       }
 
+      // Check if all nodes have valid positions before running simulation
+      let allNodesHavePositions = true;
       for (const n of graphNodes as Node[]) {
         const id = n.id;
         if (draggedIdsRef.current.has(id)) continue;
         const p = posRef.current[id];
+        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') {
+          allNodesHavePositions = false;
+          break;
+        }
+      }
+      
+      if (!allNodesHavePositions) {
+        console.warn('Some nodes missing positions, skipping simulation step');
+        return;
+      }
+      
+      for (const n of graphNodes as Node[]) {
+        const id = n.id;
+        if (draggedIdsRef.current.has(id)) continue;
+        const p = posRef.current[id];
+        // Skip nodes that don't have a position
+        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') continue;
         // Desired X from parents
         const incomers = inDir[id];
         if (incomers && incomers.length > 0) {
@@ -1475,6 +1499,8 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
         const next = prev.map((n: any) => {
           if (draggedIdsRef.current.has(n.id)) return n;
           const target = posRef.current[n.id];
+          // Skip nodes that don't have a position in posRef
+          if (!target || typeof target.x !== 'number' || typeof target.y !== 'number') return n;
           const px = n.position?.x ?? 0;
           const py = n.position?.y ?? 0;
           if (Math.abs(px - target.x) < EPS && Math.abs(py - target.y) < EPS) return n;
@@ -1511,16 +1537,22 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     // snapshot positions to freeze layout during non-root drags
     frozenPosDuringDragRef.current = { ...posRef.current };
     // sync ref pos
-    posRef.current[node.id] = { x: node.position.x, y: node.position.y };
-    velRef.current[node.id] = { vx: 0, vy: 0 };
+    if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
+      posRef.current[node.id] = { x: node.position.x, y: node.position.y };
+      velRef.current[node.id] = { vx: 0, vy: 0 };
+    }
     // record drag start position for click-threshold detection
     const start = posRef.current[node.id];
-    if (start) dragStartPosRef.current[node.id] = { x: start.x, y: start.y };
+    if (start && typeof start.x === 'number' && typeof start.y === 'number') {
+      dragStartPosRef.current[node.id] = { x: start.x, y: start.y };
+    }
   }, [edges]);
 
   const handleNodeDrag = useCallback((_e: any, node: Node) => {
     // Avoid running the whole simulation; just track the latest drag position in refs
-    posRef.current[node.id] = { x: node.position.x, y: node.position.y };
+    if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
+      posRef.current[node.id] = { x: node.position.x, y: node.position.y };
+    }
   }, []);
 
   const focusScene = useCallback((logicalId: string, duration: number = 1100) => {
@@ -1534,7 +1566,7 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
       const pos = posRef.current[targetId];
       const w = (target as any).width ?? ((target as any).type === 'ghost' ? 140 : 520);
       const h = (target as any).height ?? ((target as any).type === 'ghost' ? 40 : 160);
-      if (!pos) return;
+      if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') return;
       const centerX = pos.x + w / 2;
       const centerY = pos.y + h / 2;
       flowInstanceRef.current?.setCenter(centerX, centerY, { zoom: 1, duration });
@@ -1552,12 +1584,14 @@ const EnhancedConversationGraph: React.FC<ConversationGraphProps> = ({ graph, on
     // clear snapshot if no more drags
     if (draggedIdsRef.current.size === 0) frozenPosDuringDragRef.current = {};
     // Always accept current drop position as the starting point for smoothing back
-    posRef.current[node.id] = { x: node.position.x, y: node.position.y };
+    if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
+      posRef.current[node.id] = { x: node.position.x, y: node.position.y };
+    }
     // If movement was below threshold, treat as a click selection
     try {
       const start = dragStartPosRef.current[node.id];
       const end = posRef.current[node.id];
-      if (start && end) {
+      if (start && end && typeof start.x === 'number' && typeof start.y === 'number' && typeof end.x === 'number' && typeof end.y === 'number') {
         const dx = end.x - start.x; const dy = end.y - start.y;
         const dist = Math.hypot(dx, dy);
         if (dist < CLICK_DRAG_THRESHOLD) {

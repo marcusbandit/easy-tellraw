@@ -78,6 +78,10 @@ const App: React.FC = () => {
   const [editingFileName, setEditingFileName] = useState<string | null>(null);
   // Combined content from all files
   const [combinedDialogueSource, setCombinedDialogueSource] = useState<string>("");
+  // File monitoring state
+  const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
+  const [lastFileChange, setLastFileChange] = useState<string>('');
+  const [isRefreshingFiles, setIsRefreshingFiles] = useState<boolean>(false);
   // Fixed header height tracking to offset content correctly
   const stickyHeaderRef = useRef<HTMLDivElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
@@ -390,17 +394,17 @@ const App: React.FC = () => {
       return [block.join('\n'), '', prev].join('\n');
     });
     
-    // Also save the styles fragment to styles.txt
+    // Also save the styles fragment to Style.txt
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
       if (ipcRenderer && datapackDirInput) {
-        // Find the styles.txt file
+        // Find the Style.txt file
         const filesResult = await ipcRenderer.invoke('list-tellraw-files', datapackDirInput);
         if (filesResult?.ok) {
           const stylesFile = filesResult.files.find((f: { name: string; fullName: string; path: string; isStyles: boolean }) => f.isStyles);
           if (stylesFile) {
-            // Save the styles fragment to styles.txt
+            // Save the styles fragment to Style.txt
             await ipcRenderer.invoke('write-file', stylesFile.path, stylesFragment);
             
             // Update the combined content to reflect the changes
@@ -409,7 +413,7 @@ const App: React.FC = () => {
         }
       }
     } catch (err) {
-      console.warn('Failed to save styles fragment to styles.txt:', err);
+      console.warn('Failed to save styles fragment to Style.txt:', err);
     }
   }, [datapackDirInput]);
 
@@ -528,7 +532,7 @@ const App: React.FC = () => {
           const fileContent = await ipcRenderer.invoke('read-file', file.path);
           
           if (file.isStyles) {
-            // styles.txt content goes at the top, but deduplicate it first
+            // Style.txt content goes at the top, but deduplicate it first
             const lines = fileContent.split('\n');
             const seenStyles = new Set<string>();
             const deduplicatedStyles: string[] = [];
@@ -566,7 +570,7 @@ const App: React.FC = () => {
         }
       }
       
-      // Extract any @styles sections from other files and move to styles.txt
+      // Extract any @styles sections from other files and move to Style.txt
       const stylesMatch = combinedContent.match(/@styles\s*([\s\S]*?)\s*@endstyles/gi);
       let formattedStylesContent = '';
       
@@ -640,11 +644,11 @@ const App: React.FC = () => {
         formattedStylesContent = sortedStyles.join('\n');
       }
       
-      // Update styles.txt with deduplicated content
+      // Update Style.txt with deduplicated content
       const stylesFile = filesResult.files.find((f: { name: string; fullName: string; path: string; isStyles: boolean }) => f.isStyles);
       if (stylesFile && formattedStylesContent.trim()) {
         try {
-          // Combine existing styles.txt content with new deduplicated styles
+          // Combine existing Style.txt content with new deduplicated styles
           let finalStylesContent = stylesContent;
           
           // Create a set of existing style IDs to avoid duplicates
@@ -690,7 +694,7 @@ const App: React.FC = () => {
           await ipcRenderer.invoke('write-file', stylesFile.path, finalStylesContent);
           stylesContent = finalStylesContent;
         } catch (err) {
-          console.warn('Failed to update styles.txt:', err);
+          console.warn('Failed to update Style.txt:', err);
         }
       }
       
@@ -724,7 +728,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Comprehensive function to clean and format styles.txt
+  // Comprehensive function to clean and format Style.txt
   const cleanupAndFormatStylesFile = async (stylesFilePath: string) => {
     try {
       const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
@@ -786,7 +790,7 @@ const App: React.FC = () => {
       
       console.log('Styles.txt cleaned and formatted');
     } catch (err) {
-      console.warn('Failed to cleanup styles.txt:', err);
+      console.warn('Failed to cleanup Style.txt:', err);
     }
   };
 
@@ -800,14 +804,14 @@ const App: React.FC = () => {
       const file = tellrawFiles[fileIndex];
       const fileContent = await ipcRenderer.invoke('read-file', file.path);
       
-      // ALWAYS clean and format styles.txt when switching tabs
+      // ALWAYS clean and format Style.txt when switching tabs
       try {
         const stylesFile = tellrawFiles.find(f => f.isStyles);
         if (stylesFile) {
           await cleanupAndFormatStylesFile(stylesFile.path);
         }
       } catch (styleErr) {
-        console.warn('Failed to cleanup styles.txt:', styleErr);
+        console.warn('Failed to cleanup Style.txt:', styleErr);
       }
       
       // Check if this file contains styles that need to be moved
@@ -822,13 +826,13 @@ const App: React.FC = () => {
           // Remove @styles sections from the file content
           const cleanedContent = fileContent.replace(/@styles\s*[\s\S]*?\s*@endstyles\s*/gi, '').trim();
           
-          // Move styles to styles.txt
+          // Move styles to Style.txt
           try {
             const stylesFile = tellrawFiles.find(f => f.isStyles);
             if (stylesFile) {
               const currentStylesContent = await ipcRenderer.invoke('read-file', stylesFile.path);
               
-              // Clean up styles.txt - remove any content below @endstyles
+              // Clean up Style.txt - remove any content below @endstyles
               let cleanStylesContent = currentStylesContent;
               const endStylesIndex = currentStylesContent.indexOf('@endstyles');
               if (endStylesIndex !== -1) {
@@ -844,7 +848,7 @@ const App: React.FC = () => {
               // Update the combined content to reflect the changes
               await updateCombinedContentAndCheckReferences();
               
-              console.log(`Moved styles from ${file.name} to styles.txt`);
+              console.log(`Moved styles from ${file.name} to Style.txt`);
             }
           } catch (styleErr) {
             console.warn(`Failed to move styles from ${file.name}:`, styleErr);
@@ -857,7 +861,7 @@ const App: React.FC = () => {
           setDialogueSource(fileContent);
         }
       } else {
-        // This is styles.txt, use content as-is
+        // This is Style.txt, use content as-is
         setDialogueSource(fileContent);
       }
       
@@ -1227,7 +1231,7 @@ const App: React.FC = () => {
     }
   }, [datapackDirInput, checkReferencesInCombinedContent]);
 
-  // Function to serialize styles object to raw text format for styles.txt
+  // Function to serialize styles object to raw text format for Style.txt
   const serializeStylesToRaw = useCallback((styles: any): string => {
     const lines: string[] = [];
     
@@ -1287,8 +1291,109 @@ const App: React.FC = () => {
   useEffect(() => {
     if (datapackDirInput) {
       updateCombinedContentAndCheckReferences();
+      
+      // Start watching the directory for file changes
+      const startWatching = async () => {
+        try {
+          const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+          if (ipcRenderer) {
+            const result = await ipcRenderer.invoke('watch-directory', datapackDirInput);
+            if (result?.ok) {
+              setIsMonitoring(true);
+              console.log('Directory watching started successfully');
+            } else {
+              console.warn('Failed to start directory watching:', result?.message);
+              setIsMonitoring(false);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to start directory watching:', err);
+          setIsMonitoring(false);
+        }
+      };
+      
+      startWatching();
+      
+      // Cleanup: stop watching when component unmounts or directory changes
+      return () => {
+        const stopWatching = async () => {
+          try {
+            const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+            if (ipcRenderer) {
+              await ipcRenderer.invoke('unwatch-directory', datapackDirInput);
+              setIsMonitoring(false);
+            }
+          } catch (err) {
+            console.warn('Failed to stop directory watching:', err);
+            setIsMonitoring(false);
+          }
+        };
+        stopWatching();
+      };
     }
-  }, [datapackDirInput]);
+  }, [datapackDirInput, updateCombinedContentAndCheckReferences]);
+
+  // Listen for file change events from the main process
+  useEffect(() => {
+    const handleFileChange = async (event: any, data: any) => {
+      console.log('File change detected:', data);
+      
+      if (data.datapackDir === datapackDirInput) {
+        // Update monitoring state
+        const changeTime = new Date().toLocaleTimeString();
+        setLastFileChange(changeTime);
+        
+        // Show notification about the change
+        let changeMessage = '';
+        if (data.eventType === 'rename') {
+          changeMessage = `File ${data.filename} was ${tellrawFiles.some(f => f.fullName === data.filename) ? 'added' : 'removed'} at ${changeTime}`;
+        } else if (data.eventType === 'change') {
+          changeMessage = `File ${data.filename} was modified at ${changeTime}`;
+        }
+        
+        if (changeMessage) {
+          setImportInfo(changeMessage);
+          // Clear the message after 5 seconds
+          setTimeout(() => setImportInfo(null), 5000);
+        }
+        
+        // Show refreshing state
+        setIsRefreshingFiles(true);
+        
+        // Refresh the file list and combined content
+        await updateCombinedContentAndCheckReferences();
+        
+        // Hide refreshing state
+        setIsRefreshingFiles(false);
+        
+        // If a file was deleted and it was the active file, switch to the first available file
+        if (data.eventType === 'rename' && tellrawFiles.length > 0) {
+          const deletedFile = tellrawFiles.find(f => f.fullName === data.filename);
+          if (deletedFile && tellrawFiles.indexOf(deletedFile) === activeFileIndex) {
+            if (tellrawFiles.length > 1) {
+              // Switch to the first available file
+              setActiveFileIndex(0);
+            } else {
+              // No files left, clear the editor
+              setDialogueSource('');
+              setActiveFileIndex(-1);
+            }
+          }
+        }
+      }
+    };
+
+    // Add event listener for file changes
+    const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+    if (ipcRenderer) {
+      ipcRenderer.on('file-changed', handleFileChange);
+      
+      // Cleanup event listener
+      return () => {
+        ipcRenderer.removeAllListeners('file-changed');
+      };
+    }
+  }, [datapackDirInput, tellrawFiles, activeFileIndex, updateCombinedContentAndCheckReferences]);
 
   // RAW autosave
   useEffect(() => {
@@ -1385,7 +1490,7 @@ const App: React.FC = () => {
       name: fileName.replace('.txt', ''),
       fullName: fileName,
       path: `/imported/${fileName}`, // Virtual path for imported files
-      isStyles: fileName === 'styles.txt'
+      isStyles: fileName === 'Style.txt'
     };
     
     setTellrawFiles(prev => {
@@ -1402,7 +1507,7 @@ const App: React.FC = () => {
           updateCombinedContentAndCheckReferences();
         }
       } else {
-        // For dialogue files, extract and move styles to styles.txt, then append cleaned content
+        // For dialogue files, extract and move styles to Style.txt, then append cleaned content
         let stylesToMove = '';
         
         // Extract @styles sections from the imported file
@@ -1417,9 +1522,9 @@ const App: React.FC = () => {
           cleanedContent = content.replace(/@styles\s*[\s\S]*?\s*@endstyles\s*/gi, '').trim();
         }
         
-        // If we found styles, move them to styles.txt
+        // If we found styles, move them to Style.txt
         if (stylesToMove) {
-          // Move styles to styles.txt file
+          // Move styles to Style.txt file
           try {
             const stylesFile = tellrawFiles.find(f => f.isStyles);
             if (stylesFile) {
@@ -1428,7 +1533,7 @@ const App: React.FC = () => {
               if (ipcRenderer) {
                 // Use Promise to handle async operations
                 ipcRenderer.invoke('read-file', stylesFile.path).then((currentStylesContent: string) => {
-                  // Clean up styles.txt - remove any content below @endstyles
+                  // Clean up Style.txt - remove any content below @endstyles
                   let cleanStylesContent = currentStylesContent;
                   const endStylesIndex = currentStylesContent.indexOf('@endstyles');
                   if (endStylesIndex !== -1) {
@@ -1438,19 +1543,19 @@ const App: React.FC = () => {
                   const updatedStylesContent = cleanStylesContent ? `${cleanStylesContent}\n${stylesToMove}` : stylesToMove;
                   return ipcRenderer.invoke('write-file', stylesFile.path, updatedStylesContent);
                 }).then(() => {
-                  setImportInfo(`Imported ${fileName} and moved styles to styles.txt`);
+                  setImportInfo(`Imported ${fileName} and moved styles to Style.txt`);
                   
                   // Update combined content after styles are moved
                   if (datapackDirInput) {
                     updateCombinedContentAndCheckReferences();
                   }
                 }).catch((styleErr: any) => {
-                  console.warn(`Failed to move styles to styles.txt:`, styleErr);
+                  console.warn(`Failed to move styles to Style.txt:`, styleErr);
                 });
               }
             }
           } catch (styleErr) {
-            console.warn(`Failed to move styles to styles.txt:`, styleErr);
+            console.warn(`Failed to move styles to Style.txt:`, styleErr);
           }
         }
       }
@@ -1506,17 +1611,17 @@ const App: React.FC = () => {
                   onUpdateStyles={async (styles) => {
                     setDialogueGraph(g => g ? { ...g, styles } : { styles, scenes: {} } as any);
                     
-                    // Automatically save style changes to styles.txt
+                    // Automatically save style changes to Style.txt
                     try {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
                       if (ipcRenderer && datapackDirInput) {
-                        // Find the styles.txt file
+                        // Find the Style.txt file
                         const filesResult = await ipcRenderer.invoke('list-tellraw-files', datapackDirInput);
                         if (filesResult?.ok) {
                           const stylesFile = filesResult.files.find((f: { name: string; fullName: string; path: string; isStyles: boolean }) => f.isStyles);
                           if (stylesFile) {
-                            // Serialize the new styles to the format expected by styles.txt
+                            // Serialize the new styles to the format expected by Style.txt
                             const serializedStyles = serializeStylesToRaw(styles);
                             await ipcRenderer.invoke('write-file', stylesFile.path, serializedStyles);
                             
@@ -1526,7 +1631,7 @@ const App: React.FC = () => {
                         }
                       }
                     } catch (err) {
-                      console.warn('Failed to save styles to styles.txt:', err);
+                      console.warn('Failed to save styles to Style.txt:', err);
                     }
                   }}
                   onRequestRawUpdate={(stylesFragment) => applyStylesFragmentToRaw(stylesFragment)}
@@ -1712,6 +1817,63 @@ const App: React.FC = () => {
                         {isLoadingFromDir ? 'Loading…' : 'Load'}
                       </Button>
                     </Flex>
+                    
+                    {/* File monitoring status */}
+                    {datapackDirInput && (
+                      <Card size="1" variant="surface" style={{ marginTop: '8px' }}>
+                        <Flex direction="column" gap="2">
+                          <Flex align="center" gap="2">
+                            <div style={{ 
+                              width: '8px', 
+                              height: '8px', 
+                              borderRadius: '50%', 
+                              backgroundColor: isMonitoring ? '#22c55e' : '#ef4444' 
+                            }} />
+                            <Text size="2" color="gray">
+                              {isMonitoring ? 'Monitoring files for changes' : 'Not monitoring'}
+                            </Text>
+                            {isRefreshingFiles && (
+                              <Text size="1" color="blue">
+                                Refreshing...
+                              </Text>
+                            )}
+                            <Button
+                              size="1"
+                              variant="surface"
+                              onClick={updateCombinedContentAndCheckReferences}
+                              disabled={isRefreshingFiles}
+                              style={{ marginLeft: 'auto' }}
+                            >
+                              <svg 
+                                width="16" 
+                                height="16" 
+                                viewBox="0 0 24 24" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                strokeWidth="2" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round"
+                                style={{
+                                  transform: isRefreshingFiles ? 'rotate(360deg)' : 'rotate(0deg)',
+                                  transition: 'transform 0.5s ease-in-out',
+                                  transformOrigin: 'center'
+                                }}
+                              >
+                                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                <path d="M21 3v5h-5"/>
+                                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                <path d="M3 21v-5h5"/>
+                              </svg>
+                            </Button>
+                          </Flex>
+                          {lastFileChange && (
+                            <Text size="1" color="gray">
+                              Last change: {lastFileChange}
+                            </Text>
+                          )}
+                        </Flex>
+                      </Card>
+                    )}
                     {importWarning && (
                       <Text as="p" size="2" style={{ color: 'var(--yellow10)' }}>{importWarning}</Text>
                     )}
@@ -1733,10 +1895,10 @@ const App: React.FC = () => {
                       </Card>
                     )}
                     <Text as="p" size="2" color="gray">
-                      Files are always created in the Easy-Tellraw folder, starting with main.txt.
+                      Files are always created in the Easy-Tellraw folder, starting with Main.txt.
                     </Text>
                     <Text as="p" size="2" color="gray">
-                      A styles.txt file is automatically created and managed. All @styles sections from other files are automatically moved there.
+                      A Style.txt file is automatically created and managed. All @styles sections from other files are automatically moved there.
                     </Text>
                     
                     <Flex direction="column" gap="3" style={{ marginTop: '16px' }}>

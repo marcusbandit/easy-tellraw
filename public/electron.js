@@ -82,10 +82,10 @@ ipcMain.handle('ensure-tellraw-file', async (_event, datapackDir) => {
     if (!hasPackMcmeta) {
       return { ok: false, code: 'NO_PACK_MCMETA', message: 'Folder does not contain pack.mcmeta.' };
     }
-    // Always create/use Easy-Tellraw folder with main.txt as default
+    // Always create/use Easy-Tellraw folder with Main.txt as default
     const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
     await fs.promises.mkdir(easyFolder, { recursive: true });
-    const filePath = path.join(easyFolder, 'main.txt');
+    const filePath = path.join(easyFolder, 'Main.txt');
     const fileExists = await fs.promises
       .stat(filePath)
       .then((s) => s.isFile())
@@ -164,4 +164,66 @@ ipcMain.on('watch-file', (event, filePath) => {
 ipcMain.on('unwatch-file', (event) => {
   const webContentsId = event.sender.id;
   clearWatchersFor(webContentsId);
+});
+
+// File watcher management for datapack directories
+const fileWatchers = new Map();
+
+// Watch a directory for changes
+ipcMain.handle('watch-directory', async (_event, datapackDir) => {
+  try {
+    if (!datapackDir || typeof datapackDir !== 'string') {
+      return { ok: false, message: 'No datapack directory provided.' };
+    }
+    
+    const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
+    
+    // Stop any existing watcher for this directory
+    if (fileWatchers.has(datapackDir)) {
+      fileWatchers.get(datapackDir).close();
+      fileWatchers.delete(datapackDir);
+    }
+    
+    // Create new watcher
+    const watcher = fs.watch(easyFolder, { recursive: true }, (eventType, filename) => {
+      if (filename && filename.endsWith('.txt')) {
+        // Notify all renderers about the file change
+        BrowserWindow.getAllWindows().forEach(window => {
+          if (!window.isDestroyed()) {
+            window.webContents.send('file-changed', {
+              eventType,
+              filename,
+              datapackDir,
+              easyFolder
+            });
+          }
+        });
+      }
+    });
+    
+    fileWatchers.set(datapackDir, watcher);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+});
+
+// Stop watching a directory
+ipcMain.handle('unwatch-directory', async (_event, datapackDir) => {
+  try {
+    if (fileWatchers.has(datapackDir)) {
+      fileWatchers.get(datapackDir).close();
+      fileWatchers.delete(datapackDir);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+});
+
+// Cleanup watchers when a renderer is destroyed
+app.on('web-contents-destroyed', (_event, contents) => {
+  // Stop all watchers when renderer is destroyed
+  fileWatchers.forEach(watcher => watcher.close());
+  fileWatchers.clear();
 });

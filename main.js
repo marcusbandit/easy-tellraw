@@ -122,12 +122,12 @@ ipcMain.handle('ensure-tellraw-file', async (_event, datapackDir) => {
     if (!hasPackMcmeta) {
       return { ok: false, code: 'NO_PACK_MCMETA', message: 'Folder does not contain pack.mcmeta.' };
     }
-    // Always create/use Easy-Tellraw folder with main.txt as default
+    // Always create/use Easy-Tellraw folder with Main.txt as default
     const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
     await fs.promises.mkdir(easyFolder, { recursive: true });
     
-    // Ensure styles.txt exists
-    const stylesPath = path.join(easyFolder, 'styles.txt');
+    // Ensure Style.txt exists
+const stylesPath = path.join(easyFolder, 'Style.txt');
     const stylesExists = await fs.promises
       .stat(stylesPath)
       .then((s) => s.isFile())
@@ -136,7 +136,7 @@ ipcMain.handle('ensure-tellraw-file', async (_event, datapackDir) => {
       await fs.promises.writeFile(stylesPath, '', 'utf-8');
     }
     
-    const filePath = path.join(easyFolder, 'main.txt');
+    const filePath = path.join(easyFolder, 'Main.txt');
     const fileExists = await fs.promises
       .stat(filePath)
       .then((s) => s.isFile())
@@ -172,12 +172,12 @@ ipcMain.handle('list-tellraw-files', async (_event, datapackDir) => {
         name: f.replace('.txt', ''), // Remove .txt extension for display
         fullName: f, // Keep full filename for file operations
         path: path.join(easyFolder, f),
-        isStyles: f === 'styles.txt' // Mark styles.txt as special
+        isStyles: f === 'Style.txt' // Mark Style.txt as special
       }))
       .sort((a, b) => {
-        // Put styles.txt first, then sort alphabetically
-        if (a.isStyles) return -1;
-        if (b.isStyles) return 1;
+        // Put Style.txt first, then sort alphabetically
+if (a.isStyles) return -1;
+if (b.isStyles) return 1;
         return a.name.localeCompare(b.name);
       });
     return { ok: true, files: txtFiles };
@@ -186,7 +186,7 @@ ipcMain.handle('list-tellraw-files', async (_event, datapackDir) => {
   }
 });
 
-// Extract styles from content and move to styles.txt
+// Extract styles from content and move to Style.txt
 ipcMain.handle('extract-styles-to-file', async (_event, datapackDir, content) => {
   try {
     if (!datapackDir || typeof datapackDir !== 'string') {
@@ -194,7 +194,7 @@ ipcMain.handle('extract-styles-to-file', async (_event, datapackDir, content) =>
     }
     
     const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
-    const stylesPath = path.join(easyFolder, 'styles.txt');
+    const stylesPath = path.join(easyFolder, 'Style.txt');
     
     // Extract @styles...@endstyles content
     const stylesMatch = content.match(/@styles\s*([\s\S]*?)\s*@endstyles/i);
@@ -221,9 +221,9 @@ ipcMain.handle('rename-tellraw-file', async (_event, oldPath, newName) => {
       return { ok: false, message: 'Invalid parameters.' };
     }
     
-    // Prevent renaming styles.txt
-    if (path.basename(oldPath) === 'styles.txt') {
-      return { ok: false, message: 'styles.txt cannot be renamed.' };
+    // Prevent renaming Style.txt
+    if (path.basename(oldPath) === 'Style.txt') {
+      return { ok: false, message: 'Style.txt cannot be renamed.' };
     }
     
     const dir = path.dirname(oldPath);
@@ -245,7 +245,62 @@ ipcMain.handle('open-directory-dialog', async (event, options) => {
   return result;
 });
 
+// File watcher management
+const fileWatchers = new Map();
+
+// Watch a directory for changes
+ipcMain.handle('watch-directory', async (_event, datapackDir) => {
+  try {
+    if (!datapackDir || typeof datapackDir !== 'string') {
+      return { ok: false, message: 'No datapack directory provided.' };
+    }
+    
+    const easyFolder = path.join(datapackDir, 'Easy-Tellraw');
+    
+    // Stop any existing watcher for this directory
+    if (fileWatchers.has(datapackDir)) {
+      fileWatchers.get(datapackDir).close();
+      fileWatchers.delete(datapackDir);
+    }
+    
+    // Create new watcher
+    const watcher = fs.watch(easyFolder, { recursive: true }, (eventType, filename) => {
+      if (filename && filename.endsWith('.txt')) {
+        // Notify all renderers about the file change
+        BrowserWindow.getAllWindows().forEach(window => {
+          window.webContents.send('file-changed', {
+            eventType,
+            filename,
+            datapackDir,
+            easyFolder
+          });
+        });
+      }
+    });
+    
+    fileWatchers.set(datapackDir, watcher);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+});
+
+// Stop watching a directory
+ipcMain.handle('unwatch-directory', async (_event, datapackDir) => {
+  try {
+    if (fileWatchers.has(datapackDir)) {
+      fileWatchers.get(datapackDir).close();
+      fileWatchers.delete(datapackDir);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: String(err?.message || err) };
+  }
+});
+
 // Cleanup watchers when a renderer is destroyed
 app.on('web-contents-destroyed', (_event, contents) => {
-  clearWatchersFor(contents.id);
+  // Stop all watchers when renderer is destroyed
+  fileWatchers.forEach(watcher => watcher.close());
+  fileWatchers.clear();
 });

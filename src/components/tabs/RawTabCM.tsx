@@ -11,7 +11,7 @@ export interface RawTabProps {
 	onSwitchFile: (fileIndex: number) => void;
 	rawLintErrors: Array<{ line: number; message: string; fileIndex?: number }>;
 	setRawLintErrors: (errs: Array<{ line: number; message: string; fileIndex?: number }>) => void;
-	stylesContent?: string; // Content from styles.txt for reference validation
+	stylesContent?: string; // Content from Style.txt for reference validation
 }
 
 const RawTab: React.FC<RawTabProps> = ({ 
