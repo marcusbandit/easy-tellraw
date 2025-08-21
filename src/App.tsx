@@ -18,8 +18,20 @@ import { flattenSlateFragmentToCharSegments, squashAdjacentSegments } from "./li
 import { DialogueGraph } from "./types/dialogue";
 import { parseDialogue } from "./lib/dialogueParser";
 import RawTab from "./components/tabs/RawTabCM";
+import StartupScreen from "./components/StartupScreen";
 
 const App: React.FC = () => {
+  // Startup screen state - ALWAYS show on boot
+  const [showStartupScreen, setShowStartupScreen] = useState(true);
+  const [recentPaths, setRecentPaths] = useState<Array<{ path: string; name: string; lastOpened: string }>>(() => {
+    try {
+      const saved = window.localStorage.getItem('recentDatapacks');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   // State for Slate content and remount key
   const [value, setValue] = useState<Descendant[]>(() => {
     const saved = window.localStorage.getItem('editorValue');
@@ -69,6 +81,7 @@ const App: React.FC = () => {
       return '';
     }
   });
+
   const [importWarning, setImportWarning] = useState<string | null>(null);
   const [importInfo, setImportInfo] = useState<string | null>(null);
   const [isLoadingFromDir, setIsLoadingFromDir] = useState<boolean>(false);
@@ -137,6 +150,8 @@ const App: React.FC = () => {
       try { window.localStorage.setItem('lastDatapackDir', datapackDirInput); } catch {}
     }
   }, [datapackDirInput]);
+
+
 
   // Removed unused safeUpdateEditor helper
 
@@ -273,6 +288,27 @@ const App: React.FC = () => {
     // Reset value and recreate editor
     setValue(initialValue);
     setSlateKey(k => k + 1);
+  };
+
+  // Handler to clear current datapack and return to startup screen
+  const handleClearDatapack = () => {
+    // Clear datapack-related state
+    setDatapackDirInput('');
+    setDialogueGraph(null);
+    setDialogueSource('');
+    setCombinedDialogueSource('');
+    setTellrawFiles([]);
+    setActiveFileIndex(0);
+    setImportWarning(null);
+    setImportInfo(null);
+    setReferenceErrors([]);
+    // Clear localStorage
+    try { window.localStorage.removeItem('lastDatapackDir'); } catch {}
+    try { window.localStorage.removeItem('lastDialogueFilePath'); } catch {}
+    // Reset editor
+    handleReset();
+    // Show startup screen
+    setShowStartupScreen(true);
   };
 
   // Handler to copy collapsed tellraw JSON to clipboard
@@ -437,6 +473,51 @@ const App: React.FC = () => {
     dialogueFileInputRef.current?.click();
   }, []);
 
+  // Add datapack to recent paths
+  const addToRecentPaths = useCallback((path: string) => {
+    const name = path.split(/[/\\]/).pop() || 'Unknown';
+    const now = new Date().toLocaleDateString();
+    
+    setRecentPaths(prev => {
+      const filtered = prev.filter(p => p.path !== path);
+      const updated = [{ path, name, lastOpened: now }, ...filtered].slice(0, 10);
+      try { window.localStorage.setItem('recentDatapacks', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+
+  // Handle opening datapack from startup screen
+  const handleOpenDatapack = useCallback(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ipcRenderer: any = (window as any)?.require?.('electron')?.ipcRenderer;
+    if (!ipcRenderer) {
+      alert('Folder selection is only available in the desktop app.');
+      return;
+    }
+    const result = await ipcRenderer.invoke('open-directory-dialog', {});
+    if (!result?.canceled && result.filePaths && result.filePaths[0]) {
+      const selected = result.filePaths[0];
+      addToRecentPaths(selected);
+      setDatapackDirInput(selected);
+      setImportWarning(null);
+      setImportInfo(null);
+      handleReset();
+      await handleLoadFromDatapackDir(selected);
+      setShowStartupScreen(false);
+    }
+  }, [addToRecentPaths]);
+
+  // Handle opening recent datapack
+  const handleOpenRecent = useCallback(async (path: string) => {
+    addToRecentPaths(path);
+    setDatapackDirInput(path);
+    setImportWarning(null);
+    setImportInfo(null);
+    handleReset();
+    await handleLoadFromDatapackDir(path);
+    setShowStartupScreen(false);
+  }, [addToRecentPaths]);
+
   // Open directory picker (Electron only)
   const handleSelectDatapackDir = useCallback(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -448,13 +529,14 @@ const App: React.FC = () => {
     const result = await ipcRenderer.invoke('open-directory-dialog', {});
     if (!result?.canceled && result.filePaths && result.filePaths[0]) {
       const selected = result.filePaths[0];
+      addToRecentPaths(selected);
       setDatapackDirInput(selected);
       setImportWarning(null);
       setImportInfo(null);
       handleReset();
       await handleLoadFromDatapackDir(selected);
     }
-  }, []);
+  }, [addToRecentPaths]);
 
   // Ensure/create Tellraw file under datapack and load it
   const handleLoadFromDatapackDir = useCallback(async (pathOverride?: string) => {
@@ -509,6 +591,8 @@ const App: React.FC = () => {
       setIsLoadingFromDir(false);
     }
   }, [datapackDirInput]);
+
+
 
   // Load and merge all .txt files from the Easy-Tellraw folder
   const loadAllFilesFromDatapack = useCallback(async (datapackDir: string) => {
@@ -1569,6 +1653,18 @@ const App: React.FC = () => {
 
   const contentOverflow = activeTab === 'raw' ? 'hidden' : 'auto';
 
+  // Show startup screen when requested
+  if (showStartupScreen) {
+    return (
+      <StartupScreen
+        onOpenDatapack={handleOpenDatapack}
+        onOpenRecent={handleOpenRecent}
+        recentPaths={recentPaths}
+        isLoading={isLoadingFromDir}
+      />
+    );
+  }
+
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {/* Main content area */}
@@ -1576,13 +1672,23 @@ const App: React.FC = () => {
         <Tabs.Root value={activeTab} onValueChange={handleTabChange} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {/* Fixed header: tabs + toolbar, full-bleed to window edges */}
           <div ref={stickyHeaderRef} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, background: '#18191B', paddingTop: 16, paddingBottom: 8, paddingLeft: 16, paddingRight: 16 }}>
-            <Tabs.List style={{ background: '#18191B' }}>
-              <Tabs.Trigger value="presets" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Presets</Tabs.Trigger>
-              <Tabs.Trigger value="editor" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Editor</Tabs.Trigger>
-              <Tabs.Trigger value="graph" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Graph</Tabs.Trigger>
-              <Tabs.Trigger value="raw" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Raw</Tabs.Trigger>
-              <Tabs.Trigger value="import" style={{ fontSize: 'var(--mc-tab-font-size)', marginLeft: 'auto' }}>Import</Tabs.Trigger>
-            </Tabs.List>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Tabs.List style={{ background: '#18191B' }}>
+                <Tabs.Trigger value="presets" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Presets</Tabs.Trigger>
+                <Tabs.Trigger value="editor" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Editor</Tabs.Trigger>
+                <Tabs.Trigger value="graph" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Graph</Tabs.Trigger>
+                <Tabs.Trigger value="raw" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Raw</Tabs.Trigger>
+                <Tabs.Trigger value="import" style={{ fontSize: 'var(--mc-tab-font-size)' }}>Import</Tabs.Trigger>
+              </Tabs.List>
+              <Button
+                size="1"
+                variant="surface"
+                onClick={handleClearDatapack}
+                style={{ marginLeft: '16px' }}
+              >
+                New Project
+              </Button>
+            </div>
           </div>
           {/* Separate gradient overlay below the fixed header, spanning full width */}
           <div

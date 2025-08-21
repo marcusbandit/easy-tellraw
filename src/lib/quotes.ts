@@ -398,4 +398,5 @@ export const quotes: string[] = [
     "Rage quit!", // When a player quits due to frustration
     "GG, see you next time!", // Standard end-of-game farewell
     "Stay awesome, gamer!", // A friendly sign-off!
+    "In the first age, in the first battle, when the shadows first lengthened, one stood. He chose the path of perpetual torment. In his ravenous hatred he found no peace. And with boiling blood he scoured the umbral plains. Seeking vengeance against the dark lords who had wronged him. And those that tasted the bite of his sword named him... the Doom Slayer.", // Doom (fits a gamer's mindset)
   ];
